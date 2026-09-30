@@ -12,6 +12,7 @@ from zer0share.schema import (
     ADJ_FACTOR_COLS,
     BALANCESHEET_COLS,
     BASIC_COLS,
+    CASHFLOW_COLS,
     CI_MEMBER_COLS,
     DAILY_BASIC_COLS,
     DAILY_COLS,
@@ -81,6 +82,14 @@ BALANCESHEET_SPEC = TableSpec(
     columns=BALANCESHEET_COLS,
     parquet_pattern="ts_code=*/data.parquet",
     sync_table="balancesheet",
+    order_by="ts_code, end_date, f_ann_date, ann_date, report_type, update_flag",
+    first_date="20100101",
+)
+
+CASHFLOW_SPEC = TableSpec(
+    name="cashflow", path_parts=("stock", "financial", "cashflow"),
+    columns=CASHFLOW_COLS, parquet_pattern="ts_code=*/data.parquet",
+    sync_table="cashflow",
     order_by="ts_code, end_date, f_ann_date, ann_date, report_type, update_flag",
     first_date="20100101",
 )

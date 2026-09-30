@@ -70,8 +70,8 @@ def test_official_schema_catalog_profile_and_job(cfg):
     assert INCOME_SPEC.columns == INCOME_COLS
     assert INCOME_SPEC.path_parts == ('stock', 'financial', 'income')
     assert INCOME_SPEC.first_date == '20100101'
-    assert IPO_SCORE_TABLES[-5:] == ('fina_audit', 'fina_indicator', 'dividend', 'income', 'balancesheet')
-    assert 'cashflow' not in IPO_SCORE_TABLES
+    assert IPO_SCORE_TABLES[-6:] == ('fina_audit', 'fina_indicator', 'dividend', 'income', 'balancesheet', 'cashflow')
+    assert 'cashflow' not in IPO_SCORE_DATED_TABLES
     assert 'income' not in IPO_SCORE_DATED_TABLES
 
     fetcher = Mock()

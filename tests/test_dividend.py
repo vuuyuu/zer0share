@@ -84,7 +84,7 @@ def test_schema_catalog_profile_and_job(cfg):
         if table in {'fina_audit', 'fina_indicator', 'dividend'}
     ) == ('fina_audit', 'fina_indicator', 'dividend')
     assert 'dividend' not in IPO_SCORE_DATED_TABLES
-    assert 'cashflow' not in IPO_SCORE_TABLES
+    assert 'cashflow' not in IPO_SCORE_DATED_TABLES
 
     fetcher = Mock()
     job, = build_jobs(cfg, fetcher)

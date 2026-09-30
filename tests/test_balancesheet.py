@@ -71,9 +71,9 @@ def test_official_schema_catalog_profile_and_job(cfg):
     assert BALANCESHEET_SPEC.columns == BALANCESHEET_COLS
     assert BALANCESHEET_SPEC.path_parts == ("stock", "financial", "balancesheet")
     assert BALANCESHEET_SPEC.first_date == "20100101"
-    assert IPO_SCORE_TABLES[-1] == "balancesheet"
+    assert IPO_SCORE_TABLES[-2:] == ("balancesheet", "cashflow")
     assert "balancesheet" not in IPO_SCORE_DATED_TABLES
-    assert "cashflow" not in IPO_SCORE_TABLES
+    assert "cashflow" not in IPO_SCORE_DATED_TABLES
 
     fetcher = Mock()
     job, = build_jobs(cfg, fetcher)

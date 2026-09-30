@@ -18,6 +18,7 @@ IPO_SCORE_TABLES = (
     "dividend",
     "income",
     "balancesheet",
+    "cashflow",
 )
 
 IPO_SCORE_DATED_TABLES = frozenset(

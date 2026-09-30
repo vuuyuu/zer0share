@@ -11,6 +11,7 @@ from zer0share.schema import (
     ADJ_FACTOR_COLS,
     BALANCESHEET_COLS,
     BASIC_COLS,
+    CASHFLOW_COLS,
     CI_MEMBER_COLS,
     DAILY_BASIC_COLS,
     DAILY_COLS,
@@ -188,6 +189,12 @@ class TushareFetcher:
         return _fetch_announcement_history(
             self._pro.balancesheet, "balancesheet", BALANCESHEET_COLS,
             ts_code, start_date, end_date,
+        )
+
+    def fetch_cashflow(self, ts_code: str, start_date: str, end_date: str) -> pd.DataFrame:
+        """Fetch cashflow versions by announcement date without is_calc filtering."""
+        return _fetch_announcement_history(
+            self._pro.cashflow, "cashflow", CASHFLOW_COLS, ts_code, start_date, end_date,
         )
 
     def fetch_dividend(
