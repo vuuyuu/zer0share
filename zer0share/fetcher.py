@@ -12,6 +12,7 @@ from zer0share.schema import (
     CI_MEMBER_COLS,
     DAILY_BASIC_COLS,
     DAILY_COLS,
+    DIVIDEND_COLS,
     ETF_BASIC_COLS,
     ETF_INDEX_COLS,
     ETF_SHARE_SIZE_COLS,
@@ -103,6 +104,26 @@ class TushareFetcher:
             fields=",".join(BASIC_COLS)
         )
         return _select_columns_or_empty(df, BASIC_COLS)
+
+    def fetch_dividend(
+        self, ts_code: str, start_date: str, end_date: str,
+    ) -> pd.DataFrame:
+        """Refresh one ticker's complete dividend history on every call."""
+        del start_date, end_date  # Dividend has no history-range parameters.
+        df = self._pro.dividend(ts_code=ts_code, fields=",".join(DIVIDEND_COLS))
+        if df is not None and len(df) >= 2000:
+            raise RuntimeError(f"dividend: possible 2000-row truncation for {ts_code}")
+        result = (df.reindex(columns=DIVIDEND_COLS).copy()
+                  if df is not None and not df.empty
+                  else pd.DataFrame(columns=DIVIDEND_COLS))
+        for column in (
+            "end_date", "ann_date", "record_date", "ex_date", "pay_date",
+            "div_listdate", "imp_ann_date", "base_date",
+        ):
+            result[column] = result[column].map(
+                lambda value: dateutil.date_str(value) if pd.notna(value) else None
+            )
+        return result
 
     def fetch_fina_indicator(
         self, ts_code: str, start_date: str, end_date: str,

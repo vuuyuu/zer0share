@@ -14,6 +14,7 @@ from zer0share.schema import (
     CI_MEMBER_COLS,
     DAILY_BASIC_COLS,
     DAILY_COLS,
+    DIVIDEND_COLS,
     ETF_BASIC_COLS,
     ETF_INDEX_COLS,
     ETF_SHARE_SIZE_COLS,
@@ -60,6 +61,16 @@ BASIC_SPEC = TableSpec(
     parquet_pattern="data.parquet",
     sync_table="basic",
     order_by="ts_code",
+)
+
+DIVIDEND_SPEC = TableSpec(
+    name="dividend",
+    path_parts=("stock", "financial", "dividend"),
+    columns=DIVIDEND_COLS,
+    parquet_pattern="ts_code=*/data.parquet",
+    sync_table="dividend",
+    order_by="ts_code, end_date, ann_date, imp_ann_date, ex_date",
+    first_date="20100101",
 )
 
 FINA_AUDIT_SPEC = TableSpec(

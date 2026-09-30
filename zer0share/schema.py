@@ -17,6 +17,25 @@ BASIC_COLS = [
     "act_name",
     "act_ent_type",
 ]
+# Tushare dividend output order: https://tushare.pro/document/2?doc_id=103
+DIVIDEND_COLS = [
+    "ts_code",
+    "end_date",
+    "ann_date",
+    "div_proc",
+    "stk_div",
+    "stk_bo_rate",
+    "stk_co_rate",
+    "cash_div",
+    "cash_div_tax",
+    "record_date",
+    "ex_date",
+    "pay_date",
+    "div_listdate",
+    "imp_ann_date",
+    "base_date",
+    "base_share",
+]
 FINA_AUDIT_COLS = [
     "ts_code",
     "ann_date",
