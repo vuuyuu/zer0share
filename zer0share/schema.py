@@ -17,6 +17,15 @@ BASIC_COLS = [
     "act_name",
     "act_ent_type",
 ]
+FINA_AUDIT_COLS = [
+    "ts_code",
+    "ann_date",
+    "end_date",
+    "audit_result",
+    "audit_fees",
+    "audit_agency",
+    "audit_sign",
+]
 DAILY_COLS = [
     "ts_code", "trade_date", "open", "high", "low",
     "close", "pre_close", "change", "pct_chg", "vol", "amount"

@@ -3,7 +3,7 @@ from zer0share.notifier import Notifier
 from zer0share.sources import DataSources
 from zer0share.storage import MetaStore
 from zer0share.sync import SyncRuntime
-from zer0share.sync._jobs import SyncJob
+from zer0share.sync._jobs import SyncJob, TickerSyncResult
 from zer0share.trading_calendar import TradingCalendar
 
 
@@ -16,8 +16,8 @@ class Pipeline:
         self._build_registry(cfg, sources)
 
     def _build_registry(self, cfg: Config, sources: DataSources) -> None:
-        from zer0share.sync import calendar, stock, index, industry, futures, options, ricequant, etf
-        for module in [calendar, stock, index, industry, futures, options, etf]:
+        from zer0share.sync import calendar, stock, index, industry, futures, options, ricequant, etf, fina_audit
+        for module in [calendar, stock, index, industry, futures, options, etf, fina_audit]:
             for job in module.build_jobs(cfg, sources.tushare):
                 self._registry[job.table_name] = job
         for job in ricequant.build_jobs(cfg, sources):
@@ -26,11 +26,16 @@ class Pipeline:
     def run(self, table_name: str, start_date: str | None = None, end_date: str | None = None) -> None:
         if table_name not in self._registry:
             raise ValueError(f"未知表: {table_name}")
-        self._registry[table_name].run(self._runtime, start_date, end_date)
+        result = self._registry[table_name].run(self._runtime, start_date, end_date)
+        if isinstance(result, TickerSyncResult) and not result.complete:
+            raise RuntimeError(
+                f"{table_name}: ticker sync incomplete: failed={result.failed} "
+                f"failed_tickers={result.failed_tickers}"
+            )
 
     def run_all(self, start_date: str | None = None, end_date: str | None = None) -> None:
-        for job in self._registry.values():
-            job.run(self._runtime, start_date, end_date)
+        for table_name in self._registry:
+            self.run(table_name, start_date, end_date)
 
     @property
     def registry(self) -> dict[str, SyncJob]:

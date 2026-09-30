@@ -16,6 +16,7 @@ from zer0share.schema import (
     ETF_INDEX_COLS,
     ETF_SHARE_SIZE_COLS,
     ETF_SH_CONS_COLS,
+    FINA_AUDIT_COLS,
     FUND_ADJ_COLS,
     FUND_DAILY_COLS,
     FT_LIMIT_COLS,
@@ -101,6 +102,23 @@ class TushareFetcher:
             fields=",".join(BASIC_COLS)
         )
         return _select_columns_or_empty(df, BASIC_COLS)
+
+    def fetch_fina_audit(
+        self, ts_code: str, start_date: str, end_date: str,
+    ) -> pd.DataFrame:
+        """Fetch one ticker's audit history by announcement date."""
+        df = self._pro.fina_audit(
+            ts_code=ts_code,
+            start_date=start_date,
+            end_date=end_date,
+            fields=",".join(FINA_AUDIT_COLS),
+        )
+        result = _select_columns_or_empty(df, FINA_AUDIT_COLS).copy()
+        for column in ("ann_date", "end_date"):
+            result[column] = result[column].map(
+                lambda value: dateutil.date_str(value) if pd.notna(value) else None
+            )
+        return result
 
     def fetch_daily_kline(self, trade_date: str) -> pd.DataFrame:
         logger.debug(f"拉取日线行情: {trade_date}")

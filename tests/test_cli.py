@@ -742,8 +742,11 @@ def test_sync_ipo_score_dates(args, expected_start, expected_end):
     assert pipeline.run.call_args_list == [
         call(
             table,
-            start_date=expected_start if table in dated else None,
-            end_date=expected_end if table in dated else None,
+            start_date=(
+                (None if "--init" in args else expected_start) if table == "fina_audit"
+                else expected_start if table in dated else None
+            ),
+            end_date=expected_end if table in dated or table == "fina_audit" else None,
         )
         for table in IPO_SCORE_TABLES
     ]
@@ -815,3 +818,14 @@ def test_sync_existing_groups_preserve_dates_and_tables(selector, tables, start_
             call(table, start_date=start_date, end_date=end_date) for table in tables
         ]
         pipeline.run_all.assert_not_called()
+
+
+def test_sync_table_fina_audit_accepts_explicit_dates():
+    pipeline = _make_mock_pipeline()
+    with patch("zer0share.cli._make_pipeline", return_value=pipeline):
+        result = CliRunner().invoke(cli, [
+            "sync", "--table", "fina_audit", "--start-date", "20100101",
+            "--end-date", "20240531",
+        ])
+    assert result.exit_code == 0, result.output
+    pipeline.run.assert_called_once_with("fina_audit", start_date="20100101", end_date="20240531")

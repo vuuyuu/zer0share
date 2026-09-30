@@ -6,9 +6,12 @@ def test_ipo_score_profile():
     assert IPO_SCORE_TABLES == (
         "trade_cal", "basic", "daily_kline", "adj_factor", "daily_basic",
         "stock_st", "suspend_d", "stk_limit", "index_daily", "industry",
+        "fina_audit",
     )
     assert isinstance(IPO_SCORE_DATED_TABLES, frozenset)
     assert IPO_SCORE_DATED_TABLES == {
         "daily_kline", "adj_factor", "daily_basic", "stock_st",
         "suspend_d", "stk_limit", "index_daily",
     }
+    assert not {"fina_indicator", "dividend", "income", "balancesheet", "cashflow"} & set(IPO_SCORE_TABLES)
+    assert "fina_audit" not in IPO_SCORE_DATED_TABLES
