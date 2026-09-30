@@ -1,9 +1,12 @@
 from datetime import date
-from unittest.mock import MagicMock, patch
+from itertools import combinations
+from unittest.mock import MagicMock, call, patch
 
+import pytest
 from click.testing import CliRunner
 
-from zer0share.cli import cli
+from zer0share.cli import ETF_TABLES, FUTURES_TABLES, OPTIONS_TABLES, RICEQUANT_TABLES, STOCK_TABLES, cli
+from zer0share.profiles import IPO_SCORE_TABLES
 
 
 def _make_mock_pipeline(supports_date_range_for=None):
@@ -705,3 +708,110 @@ def test_sync_etf_index_rejects_date_range():
 
     assert result.exit_code != 0
     assert "date range options" in result.output
+
+
+@pytest.mark.parametrize(
+    "args, expected_start, expected_end",
+    [
+        ([], None, None),
+        (["--init"], "20100101", None),
+        (["--start-date", "20240101"], "20240101", None),
+        (["--init", "--start-date", "20000101"], "20100101", None),
+        (["--init", "--start-date", "20240101"], "20100101", None),
+        (["--init", "--end-date", "20100131"], "20100101", "20100131"),
+        (
+            ["--init", "--start-date", "20240101", "--end-date", "20100131"],
+            "20100101", "20100131",
+        ),
+        (
+            ["--start-date", "20240101", "--end-date", "20240131"],
+            "20240101", "20240131",
+        ),
+    ],
+)
+def test_sync_ipo_score_dates(args, expected_start, expected_end):
+    pipeline = _make_mock_pipeline()
+    with patch("zer0share.cli._make_pipeline", return_value=pipeline):
+        result = CliRunner().invoke(cli, ["sync", "--ipo-score", *args])
+
+    assert result.exit_code == 0, result.output
+    dated = {
+        "daily_kline", "adj_factor", "daily_basic", "stock_st",
+        "suspend_d", "stk_limit", "index_daily",
+    }
+    assert pipeline.run.call_args_list == [
+        call(
+            table,
+            start_date=expected_start if table in dated else None,
+            end_date=expected_end if table in dated else None,
+        )
+        for table in IPO_SCORE_TABLES
+    ]
+    pipeline.run_all.assert_not_called()
+
+
+SYNC_SELECTORS = [
+    ["--table", "daily_kline"], ["--all"], ["--stock"], ["--etf"],
+    ["--futures"], ["--options"], ["--ipo-score"], ["--ricequant"],
+]
+
+
+@pytest.mark.parametrize("left, right", list(combinations(SYNC_SELECTORS, 2)))
+def test_sync_selectors_are_mutually_exclusive(left, right):
+    with patch("zer0share.cli._make_pipeline") as make_pipeline:
+        result = CliRunner().invoke(cli, ["sync", *left, *right])
+    assert result.exit_code == 2
+    assert "mutually exclusive" in result.output
+    make_pipeline.assert_not_called()
+
+
+@pytest.mark.parametrize("selector", [[], *[s for s in SYNC_SELECTORS if s != ["--ipo-score"]]])
+def test_sync_init_requires_ipo_score(selector):
+    with patch("zer0share.cli._make_pipeline") as make_pipeline:
+        result = CliRunner().invoke(cli, ["sync", *selector, "--init"])
+    assert result.exit_code == 2
+    assert "--init requires --ipo-score" in result.output
+    make_pipeline.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["--init", "--end-date", "20091231"],
+        ["--end-date", "20240131"],
+        ["--start-date", "20240201", "--end-date", "20240131"],
+    ],
+)
+def test_sync_ipo_score_rejects_invalid_range(args):
+    with patch("zer0share.cli._make_pipeline") as make_pipeline:
+        result = CliRunner().invoke(cli, ["sync", "--ipo-score", *args])
+    assert result.exit_code == 2
+    make_pipeline.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "selector, tables",
+    [
+        ("--stock", STOCK_TABLES), ("--etf", ETF_TABLES),
+        ("--futures", FUTURES_TABLES), ("--options", OPTIONS_TABLES),
+        ("--ricequant", RICEQUANT_TABLES), ("--all", None),
+    ],
+)
+@pytest.mark.parametrize("start_date", [None, "20240101"])
+def test_sync_existing_groups_preserve_dates_and_tables(selector, tables, start_date):
+    pipeline = _make_mock_pipeline()
+    args = ["sync", selector]
+    end_date = "20240131" if start_date else None
+    if start_date:
+        args += ["--start-date", start_date, "--end-date", end_date]
+    with patch("zer0share.cli._make_pipeline", return_value=pipeline):
+        result = CliRunner().invoke(cli, args)
+    assert result.exit_code == 0, result.output
+    if tables is None:
+        pipeline.run_all.assert_called_once_with(start_date=start_date, end_date=end_date)
+        pipeline.run.assert_not_called()
+    else:
+        assert pipeline.run.call_args_list == [
+            call(table, start_date=start_date, end_date=end_date) for table in tables
+        ]
+        pipeline.run_all.assert_not_called()
