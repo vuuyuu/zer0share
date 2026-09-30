@@ -9,6 +9,7 @@ import zer0share.dateutil as dateutil
 
 from zer0share.schema import (
     ADJ_FACTOR_COLS,
+    BALANCESHEET_COLS,
     BASIC_COLS,
     CI_MEMBER_COLS,
     DAILY_BASIC_COLS,
@@ -85,6 +86,61 @@ INDEX_DAILY_CODES = [
     "000922.SH",  # 中证红利
 ]
 
+_ANNOUNCEMENT_CHUNK_YEARS = 3
+_ANNOUNCEMENT_SATURATION_ROWS = 100
+
+
+def _fetch_announcement_history(
+    endpoint, table_name: str, columns: list[str], ts_code: str,
+    start_date: str, end_date: str,
+) -> pd.DataFrame:
+    """Fetch complete announcement-date history with truncation protection."""
+    start = dateutil.parse_date(start_date)
+    end = dateutil.parse_date(end_date)
+    if start > end:
+        raise ValueError("start_date is after end_date")
+    frames = []
+
+    def fetch_chunk(left, right):
+        df = endpoint(
+            ts_code=ts_code,
+            start_date=left.strftime("%Y%m%d"),
+            end_date=right.strftime("%Y%m%d"),
+            fields=",".join(columns),
+        )
+        if df is not None and len(df) >= _ANNOUNCEMENT_SATURATION_ROWS:
+            if left == right:
+                raise RuntimeError(
+                    f"{table_name}: saturated single announcement day at {ts_code} {left}"
+                )
+            middle = left + (right - left) // 2
+            fetch_chunk(left, middle)
+            fetch_chunk(middle + timedelta(days=1), right)
+            return
+        if df is not None and not df.empty:
+            frames.append(df.reindex(columns=columns))
+
+    current = start
+    while current <= end:
+        stop = min(
+            end,
+            current.replace(
+                year=min(current.year + _ANNOUNCEMENT_CHUNK_YEARS - 1, 9999),
+                month=12,
+                day=31,
+            ),
+        )
+        fetch_chunk(current, stop)
+        if stop == end:
+            break
+        current = stop + timedelta(days=1)
+    result = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=columns)
+    for column in ("ann_date", "f_ann_date", "end_date"):
+        result[column] = result[column].map(
+            lambda value: dateutil.date_str(value) if pd.notna(value) else None
+        )
+    return result
+
 FUTURES_EXCHANGES = ["CZCE", "SHFE", "DCE", "CFFEX", "INE", "GFEX"]
 
 FUT_INDEX_CODES = ["NHCI.NH", "NHAI.NH", "NHMI.NH"]
@@ -116,42 +172,23 @@ class TushareFetcher:
         returning 100 or more rows conservatively, so large responses never
         silently become assumed-complete history. TickerSyncJob handles retry.
         """
-        start = dateutil.parse_date(start_date)
-        end = dateutil.parse_date(end_date)
-        if start > end:
-            raise ValueError("start_date is after end_date")
-        frames = []
+        return _fetch_announcement_history(
+            self._pro.income, "income", INCOME_COLS, ts_code, start_date, end_date,
+        )
 
-        def fetch_chunk(left, right):
-            df = self._pro.income(
-                ts_code=ts_code,
-                start_date=left.strftime("%Y%m%d"),
-                end_date=right.strftime("%Y%m%d"),
-                fields=",".join(INCOME_COLS),
-            )
-            if df is not None and len(df) >= 100:
-                if left == right:
-                    raise RuntimeError(f"income: saturated single announcement day at {ts_code} {left}")
-                middle = left + (right - left) // 2
-                fetch_chunk(left, middle)
-                fetch_chunk(middle + timedelta(days=1), right)
-                return
-            if df is not None and not df.empty:
-                frames.append(df.reindex(columns=INCOME_COLS))
+    def fetch_balancesheet(
+        self, ts_code: str, start_date: str, end_date: str,
+    ) -> pd.DataFrame:
+        """Fetch balance-sheet versions over announcement-date ranges.
 
-        current = start
-        while current <= end:
-            stop = min(end, current.replace(year=min(current.year + 2, 9999), month=12, day=31))
-            fetch_chunk(current, stop)
-            if stop == end:
-                break
-            current = stop + timedelta(days=1)
-        result = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=INCOME_COLS)
-        for column in ("ann_date", "f_ann_date", "end_date"):
-            result[column] = result[column].map(
-                lambda value: dateutil.date_str(value) if pd.notna(value) else None
-            )
-        return result
+        Tushare does not publish an ordinary-endpoint row limit. A response of
+        100 rows is therefore treated conservatively as possible truncation and
+        bisected until each response is below that protection threshold.
+        """
+        return _fetch_announcement_history(
+            self._pro.balancesheet, "balancesheet", BALANCESHEET_COLS,
+            ts_code, start_date, end_date,
+        )
 
     def fetch_dividend(
         self, ts_code: str, start_date: str, end_date: str,

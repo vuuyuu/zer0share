@@ -743,10 +743,10 @@ def test_sync_ipo_score_dates(args, expected_start, expected_end):
         call(
             table,
             start_date=(
-                (None if "--init" in args else expected_start) if table in {"fina_audit", "fina_indicator", "dividend", "income"}
+                (None if "--init" in args else expected_start) if table in {"fina_audit", "fina_indicator", "dividend", "income", "balancesheet"}
                 else expected_start if table in dated else None
             ),
-            end_date=expected_end if table in dated or table in {"fina_audit", "fina_indicator", "dividend", "income"} else None,
+            end_date=expected_end if table in dated or table in {"fina_audit", "fina_indicator", "dividend", "income", "balancesheet"} else None,
         )
         for table in IPO_SCORE_TABLES
     ]

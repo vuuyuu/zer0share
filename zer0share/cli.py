@@ -112,6 +112,7 @@ SYNC_TABLES = [
     "fina_indicator",
     "dividend",
     "income",
+    "balancesheet",
     *STOCK_TABLES,
     *FUTURES_TABLES,
     *OPTIONS_TABLES,
@@ -174,7 +175,7 @@ def sync(
 
         if sync_ipo_score:
             for t in IPO_SCORE_TABLES:
-                if t in {"fina_audit", "fina_indicator", "dividend", "income"}:
+                if t in {"fina_audit", "fina_indicator", "dividend", "income", "balancesheet"}:
                     # Initial history comes from this dataset's own first_date.
                     pipeline.run(t, start_date=None if init else start_date, end_date=end_date)
                     continue

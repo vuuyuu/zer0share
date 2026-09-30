@@ -10,6 +10,7 @@ named constants.
 from zer0share.query.repository import DailyTableSpec, TableSpec
 from zer0share.schema import (
     ADJ_FACTOR_COLS,
+    BALANCESHEET_COLS,
     BASIC_COLS,
     CI_MEMBER_COLS,
     DAILY_BASIC_COLS,
@@ -70,6 +71,16 @@ INCOME_SPEC = TableSpec(
     columns=INCOME_COLS,
     parquet_pattern="ts_code=*/data.parquet",
     sync_table="income",
+    order_by="ts_code, end_date, f_ann_date, ann_date, report_type, update_flag",
+    first_date="20100101",
+)
+
+BALANCESHEET_SPEC = TableSpec(
+    name="balancesheet",
+    path_parts=("stock", "financial", "balancesheet"),
+    columns=BALANCESHEET_COLS,
+    parquet_pattern="ts_code=*/data.parquet",
+    sync_table="balancesheet",
     order_by="ts_code, end_date, f_ann_date, ann_date, report_type, update_flag",
     first_date="20100101",
 )
