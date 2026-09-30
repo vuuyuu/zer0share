@@ -21,6 +21,7 @@ from zer0share.schema import (
     ETF_SH_CONS_COLS,
     FINA_AUDIT_COLS,
     FINA_INDICATOR_COLS,
+    INCOME_COLS,
     FUND_ADJ_COLS,
     FUND_DAILY_COLS,
     FT_LIMIT_COLS,
@@ -61,6 +62,16 @@ BASIC_SPEC = TableSpec(
     parquet_pattern="data.parquet",
     sync_table="basic",
     order_by="ts_code",
+)
+
+INCOME_SPEC = TableSpec(
+    name="income",
+    path_parts=("stock", "financial", "income"),
+    columns=INCOME_COLS,
+    parquet_pattern="ts_code=*/data.parquet",
+    sync_table="income",
+    order_by="ts_code, end_date, f_ann_date, ann_date, report_type, update_flag",
+    first_date="20100101",
 )
 
 DIVIDEND_SPEC = TableSpec(

@@ -79,9 +79,12 @@ def test_schema_catalog_profile_and_job(cfg):
     assert DIVIDEND_SPEC.columns == DIVIDEND_COLS
     assert DIVIDEND_SPEC.path_parts == ('stock', 'financial', 'dividend')
     assert DIVIDEND_SPEC.first_date == '20100101'
-    assert IPO_SCORE_TABLES[-3:] == ('fina_audit', 'fina_indicator', 'dividend')
+    assert tuple(
+        table for table in IPO_SCORE_TABLES
+        if table in {'fina_audit', 'fina_indicator', 'dividend'}
+    ) == ('fina_audit', 'fina_indicator', 'dividend')
     assert 'dividend' not in IPO_SCORE_DATED_TABLES
-    assert not {'income', 'balancesheet', 'cashflow'} & set(IPO_SCORE_TABLES)
+    assert not {'balancesheet', 'cashflow'} & set(IPO_SCORE_TABLES)
 
     fetcher = Mock()
     job, = build_jobs(cfg, fetcher)

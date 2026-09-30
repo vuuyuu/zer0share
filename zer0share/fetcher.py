@@ -2,6 +2,7 @@ import tushare as ts
 import pandas as pd
 import requests
 import time
+from datetime import timedelta
 from loguru import logger
 
 import zer0share.dateutil as dateutil
@@ -19,6 +20,7 @@ from zer0share.schema import (
     ETF_SH_CONS_COLS,
     FINA_AUDIT_COLS,
     FINA_INDICATOR_COLS,
+    INCOME_COLS,
     FUND_ADJ_COLS,
     FUND_DAILY_COLS,
     FT_LIMIT_COLS,
@@ -104,6 +106,52 @@ class TushareFetcher:
             fields=",".join(BASIC_COLS)
         )
         return _select_columns_or_empty(df, BASIC_COLS)
+
+    def fetch_income(
+        self, ts_code: str, start_date: str, end_date: str,
+    ) -> pd.DataFrame:
+        """Fetch income versions over announcement-date ranges.
+
+        The official income page does not state a row cap. Split any interval
+        returning 100 or more rows conservatively, so large responses never
+        silently become assumed-complete history. TickerSyncJob handles retry.
+        """
+        start = dateutil.parse_date(start_date)
+        end = dateutil.parse_date(end_date)
+        if start > end:
+            raise ValueError("start_date is after end_date")
+        frames = []
+
+        def fetch_chunk(left, right):
+            df = self._pro.income(
+                ts_code=ts_code,
+                start_date=left.strftime("%Y%m%d"),
+                end_date=right.strftime("%Y%m%d"),
+                fields=",".join(INCOME_COLS),
+            )
+            if df is not None and len(df) >= 100:
+                if left == right:
+                    raise RuntimeError(f"income: saturated single announcement day at {ts_code} {left}")
+                middle = left + (right - left) // 2
+                fetch_chunk(left, middle)
+                fetch_chunk(middle + timedelta(days=1), right)
+                return
+            if df is not None and not df.empty:
+                frames.append(df.reindex(columns=INCOME_COLS))
+
+        current = start
+        while current <= end:
+            stop = min(end, current.replace(year=min(current.year + 2, 9999), month=12, day=31))
+            fetch_chunk(current, stop)
+            if stop == end:
+                break
+            current = stop + timedelta(days=1)
+        result = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=INCOME_COLS)
+        for column in ("ann_date", "f_ann_date", "end_date"):
+            result[column] = result[column].map(
+                lambda value: dateutil.date_str(value) if pd.notna(value) else None
+            )
+        return result
 
     def fetch_dividend(
         self, ts_code: str, start_date: str, end_date: str,

@@ -16,6 +16,7 @@ IPO_SCORE_TABLES = (
     "fina_audit",
     "fina_indicator",
     "dividend",
+    "income",
 )
 
 IPO_SCORE_DATED_TABLES = frozenset(
