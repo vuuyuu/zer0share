@@ -222,10 +222,10 @@ def test_pipeline_registry_contains_all_tables(pipeline):
         "fut_index_daily", "fut_weekly_detail",
         "opt_basic", "opt_daily",
         "fund_daily", "fund_adj", "etf_share_size", "etf_sh_cons", "etf_basic", "etf_index",
-        "fina_audit",
+        "fina_audit", "fina_indicator",
     }
     assert set(pipeline.registry.keys()) == expected
-    assert len(pipeline.registry) == 34
+    assert len(pipeline.registry) == 35
 
 
 def test_opt_daily_spec_uses_option_market_first_date(pipeline):
@@ -245,6 +245,7 @@ def test_run_all_runs_all_registered_jobs(pipeline, cfg, fetcher):
     _setup_trade_cal(pipeline, cfg, trade_date=today, is_open=True)
     fetcher.fetch_basic.return_value = _basic_df()
     fetcher.fetch_fina_audit.return_value = pd.DataFrame()
+    fetcher.fetch_fina_indicator.return_value = pd.DataFrame()
 
     # Mark every registered table as already synced
     for table_name in pipeline.registry:

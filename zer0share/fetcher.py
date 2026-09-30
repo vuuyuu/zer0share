@@ -17,6 +17,7 @@ from zer0share.schema import (
     ETF_SHARE_SIZE_COLS,
     ETF_SH_CONS_COLS,
     FINA_AUDIT_COLS,
+    FINA_INDICATOR_COLS,
     FUND_ADJ_COLS,
     FUND_DAILY_COLS,
     FT_LIMIT_COLS,
@@ -102,6 +103,51 @@ class TushareFetcher:
             fields=",".join(BASIC_COLS)
         )
         return _select_columns_or_empty(df, BASIC_COLS)
+
+    def fetch_fina_indicator(
+        self, ts_code: str, start_date: str, end_date: str,
+    ) -> pd.DataFrame:
+        """Fetch report-period windows; visibility is ann_date, not end_date.
+
+        Five calendar-year chunks avoid the ordinary 100-row cap. Saturated
+        chunks are bisected; a saturated single day fails rather than silently
+        storing truncated history. Retries belong to TickerSyncJob.
+        """
+        start = dateutil.parse_date(start_date)
+        end = dateutil.parse_date(end_date)
+        if start > end:
+            raise ValueError("start_date is after end_date")
+        frames = []
+
+        def fetch_chunk(left, right):
+            df = self._pro.fina_indicator(
+                ts_code=ts_code, start_date=left.strftime("%Y%m%d"),
+                end_date=right.strftime("%Y%m%d"),
+                fields=",".join(FINA_INDICATOR_COLS),
+            )
+            if df is not None and len(df) >= 100:
+                if left == right:
+                    raise RuntimeError(f"fina_indicator: 100-row limit at {ts_code} {left}")
+                middle = left + (right - left) // 2
+                fetch_chunk(left, middle)
+                fetch_chunk(dateutil.parse_date(dateutil.add_days(middle.strftime("%Y%m%d"), 1)), right)
+                return
+            if df is not None and not df.empty:
+                frames.append(df.reindex(columns=FINA_INDICATOR_COLS))
+
+        current = start
+        while current <= end:
+            stop = min(end, current.replace(year=min(current.year + 4, 9999), month=12, day=31))
+            fetch_chunk(current, stop)
+            if stop == end:
+                break
+            current = dateutil.parse_date(dateutil.add_days(stop.strftime("%Y%m%d"), 1))
+        result = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=FINA_INDICATOR_COLS)
+        for column in ("ann_date", "end_date"):
+            result[column] = result[column].map(
+                lambda value: dateutil.date_str(value) if pd.notna(value) else None
+            )
+        return result
 
     def fetch_fina_audit(
         self, ts_code: str, start_date: str, end_date: str,

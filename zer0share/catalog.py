@@ -19,6 +19,7 @@ from zer0share.schema import (
     ETF_SHARE_SIZE_COLS,
     ETF_SH_CONS_COLS,
     FINA_AUDIT_COLS,
+    FINA_INDICATOR_COLS,
     FUND_ADJ_COLS,
     FUND_DAILY_COLS,
     FT_LIMIT_COLS,
@@ -68,6 +69,16 @@ FINA_AUDIT_SPEC = TableSpec(
     parquet_pattern="ts_code=*/data.parquet",
     sync_table="fina_audit",
     order_by="ts_code, end_date, ann_date",
+    first_date="20100101",
+)
+
+FINA_INDICATOR_SPEC = TableSpec(
+    name="fina_indicator",
+    path_parts=("stock", "financial", "fina_indicator"),
+    columns=FINA_INDICATOR_COLS,
+    parquet_pattern="ts_code=*/data.parquet",
+    sync_table="fina_indicator",
+    order_by="ts_code, end_date, ann_date, update_flag",
     first_date="20100101",
 )
 
