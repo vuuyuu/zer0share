@@ -4,11 +4,13 @@ sync/_jobs.py — Abstract and concrete sync job implementations.
 SyncJob          ABC with table_name, supports_date_range, abstract run()
 DailySyncJob     Daily-partitioned table sync (loops over trading days)
 SnapshotSyncJob  Single-file snapshot table sync
+TickerSyncJob    Callback-driven per-ticker history sync
 """
 import time
 import datetime as dt
 from abc import ABC, abstractmethod
-from typing import Callable
+from dataclasses import dataclass, field
+from typing import Callable, Literal
 
 import pandas as pd
 from loguru import logger
@@ -55,6 +57,137 @@ class SyncJob(ABC):
     @abstractmethod
     def run(self, rt: SyncRuntime, start_date: str | None = None, end_date: str | None = None) -> None:
         ...
+
+
+@dataclass
+class TickerSyncResult:
+    """Batch counts: success means written, empty means a successful empty fetch."""
+
+    total: int
+    success: int = 0
+    empty: int = 0
+    failed: int = 0
+    failed_tickers: list[str] = field(default_factory=list)
+
+    @property
+    def complete(self) -> bool:
+        return self.failed == 0 and self.success + self.empty == self.total
+
+
+class TickerSyncJob(SyncJob):
+    """Sync ticker histories without knowing their schema or storage format.
+
+    Dates use YYYYMMDD; overlap is in calendar days and is not clamped to
+    first_date. get_last_date extracts the dataset's date from local history;
+    None falls back to first_date. Explicit start_date overrides that hook.
+    Only fetches are retried, so merge/write callbacks are never replayed.
+    Per-ticker errors are counted and processing continues; callers must check
+    the returned result.complete. Universe-loading errors propagate to callers.
+    No table-wide sync metadata is advanced by this job.
+    """
+
+    supports_date_range = True
+
+    def __init__(
+        self,
+        table_name: str,
+        get_tickers: Callable[[], list[str]],
+        fetch_range: Callable[[str, str, str], pd.DataFrame],
+        read_existing: Callable[[str], pd.DataFrame],
+        write_ticker: Callable[[str, pd.DataFrame], None],
+        merge: Callable[[pd.DataFrame, pd.DataFrame], pd.DataFrame],
+        first_date: str,
+        get_last_date: Callable[[pd.DataFrame], str | None],
+        overlap_days: int = 120,
+        ticker_sleep: float = 0.2,
+    ):
+        dateutil.parse_date(first_date)
+        if overlap_days < 0 or ticker_sleep < 0:
+            raise ValueError("overlap_days and ticker_sleep must be non-negative")
+        self.table_name = table_name
+        self.get_tickers = get_tickers
+        self.fetch_range = fetch_range
+        self.read_existing = read_existing
+        self.write_ticker = write_ticker
+        self.merge = merge
+        self.first_date = first_date
+        self.get_last_date = get_last_date
+        self.overlap_days = overlap_days
+        self.ticker_sleep = ticker_sleep
+
+    def _sync_ticker(
+        self, ticker: str, start_date: str | None, end: str,
+    ) -> Literal["SUCCESS", "FETCH_EMPTY"]:
+        # Keep frames in this scope so they are released before the next ticker.
+        existing = self.read_existing(ticker)
+        start = start_date
+        if start is None:
+            last = self.get_last_date(existing) if not existing.empty else None
+            start = dateutil.add_days(last, -self.overlap_days) if last is not None else self.first_date
+        if start > end:
+            raise ValueError(f"start_date {start} is after end_date {end}")
+
+        for attempt, delay in enumerate((*_RETRY_DELAYS, None), start=1):
+            try:
+                fetched = self.fetch_range(ticker, start, end)
+                if not isinstance(fetched, pd.DataFrame):
+                    raise TypeError("fetch_range must return a pandas DataFrame")
+                break
+            except Exception as exc:
+                if delay is None:
+                    raise
+                logger.warning(
+                    f"{self.table_name}: fetch failed for {ticker} "
+                    f"(attempt {attempt}), retry in {delay}s: {exc}"
+                )
+                time.sleep(delay)
+
+        if fetched.empty:
+            return "FETCH_EMPTY"
+        merged = self.merge(existing, fetched)
+        self.write_ticker(ticker, merged)
+        return "SUCCESS"
+
+    def run(
+        self,
+        rt: SyncRuntime,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> TickerSyncResult:
+        end = end_date if end_date is not None else rt.calendar.today()
+        dateutil.parse_date(end)
+        if start_date is not None:
+            dateutil.parse_date(start_date)
+            if start_date > end:
+                raise ValueError(f"start_date {start_date} is after end_date {end}")
+
+        tickers = self.get_tickers()
+        result = TickerSyncResult(total=len(tickers))
+        logger.info(f"Ticker sync start: table={self.table_name} tickers={result.total}")
+        for i, ticker in enumerate(tickers):
+            try:
+                status = self._sync_ticker(ticker, start_date, end)
+            except Exception as exc:
+                result.failed += 1
+                result.failed_tickers.append(ticker)
+                logger.error(f"Ticker sync failed: table={self.table_name} ticker={ticker} error={exc}")
+            else:
+                if status == "SUCCESS":
+                    result.success += 1
+                else:
+                    result.empty += 1
+            if self.ticker_sleep and i + 1 < result.total:
+                time.sleep(self.ticker_sleep)
+
+        summary = (
+            f"Ticker sync finished: table={self.table_name} total={result.total} "
+            f"success={result.success} empty={result.empty} failed={result.failed}"
+        )
+        if result.failed:
+            logger.warning(f"{summary} failed_tickers={result.failed_tickers}")
+        else:
+            logger.info(summary)
+        return result
 
 
 class DailySyncJob(SyncJob):

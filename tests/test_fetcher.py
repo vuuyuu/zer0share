@@ -1646,3 +1646,41 @@ def test_fetch_opt_daily_calls_api_with_date(mock_pro):
             exchange=exchange,
             fields=",".join(OPT_DAILY_COLS),
         )
+
+
+def test_fetch_fina_audit_passes_ticker_dates_and_aligns_schema():
+    from zer0share.schema import FINA_AUDIT_COLS
+
+    raw = pd.DataFrame({
+        "extra": ["discard"], "audit_sign": ["  张三、李四  "],
+        "audit_agency": ["原始事务所"], "audit_fees": [123.45],
+        "audit_result": ["标准无保留意见"], "end_date": ["20231231"],
+        "ann_date": ["20240430"], "ts_code": ["600036.SH"],
+    })
+    with patch("zer0share.fetcher.ts.pro_api") as pro_api:
+        pro_api.return_value.fina_audit.return_value = raw
+        result = TushareFetcher("fake").fetch_fina_audit("600036.SH", "20100101", "20240531")
+        pro_api.return_value.fina_audit.assert_called_once_with(
+            ts_code="600036.SH", start_date="20100101", end_date="20240531",
+            fields=",".join(FINA_AUDIT_COLS),
+        )
+    assert list(result.columns) == FINA_AUDIT_COLS
+    pd.testing.assert_frame_equal(result, raw[FINA_AUDIT_COLS])
+
+
+@pytest.mark.parametrize("empty", [None, pd.DataFrame()])
+def test_fetch_fina_audit_empty_has_schema(empty):
+    from zer0share.schema import FINA_AUDIT_COLS
+
+    with patch("zer0share.fetcher.ts.pro_api") as pro_api:
+        pro_api.return_value.fina_audit.return_value = empty
+        result = TushareFetcher("fake").fetch_fina_audit("000001.SZ", "20100101", "20240531")
+    assert result.empty
+    assert list(result.columns) == FINA_AUDIT_COLS
+
+
+def test_fetch_fina_audit_does_not_swallow_api_errors():
+    with patch("zer0share.fetcher.ts.pro_api") as pro_api:
+        pro_api.return_value.fina_audit.side_effect = RuntimeError("API unavailable")
+        with pytest.raises(RuntimeError, match="API unavailable"):
+            TushareFetcher("fake").fetch_fina_audit("000001.SZ", "20100101", "20240531")

@@ -7,6 +7,7 @@ from zer0share.config import load_config
 from zer0share.logging import init_logger
 from zer0share.notifier import build_notifier
 from zer0share.pipeline import Pipeline
+from zer0share.profiles import IPO_SCORE_DATED_TABLES, IPO_SCORE_INIT_START, IPO_SCORE_TABLES
 from zer0share.quality.models import QualityRunOptions
 from zer0share.quality.reporter import QualityReporter, format_summary
 from zer0share.quality.runner import QualityRunner
@@ -107,6 +108,12 @@ RICEQUANT_TABLES = [
 ]
 
 SYNC_TABLES = [
+    "fina_audit",
+    "fina_indicator",
+    "dividend",
+    "income",
+    "balancesheet",
+    "cashflow",
     *STOCK_TABLES,
     *FUTURES_TABLES,
     *OPTIONS_TABLES,
@@ -127,6 +134,8 @@ SYNC_TABLES = [
 @click.option("--options", "sync_options", is_flag=True, default=False)
 @click.option("--etf", "sync_etf", is_flag=True, default=False)
 @click.option("--ricequant", "sync_ricequant", is_flag=True, default=False)
+@click.option("--ipo-score", "sync_ipo_score", is_flag=True, default=False)
+@click.option("--init", "init", is_flag=True, default=False)
 @click.option("--start-date", default=None, callback=_validate_date)
 @click.option("--end-date", default=None, callback=_validate_date)
 def sync(
@@ -137,13 +146,26 @@ def sync(
     sync_options: bool,
     sync_etf: bool,
     sync_ricequant: bool,
+    sync_ipo_score: bool,
+    init: bool,
     start_date: str | None,
     end_date: str | None,
 ) -> None:
     """同步数据。"""
-    if end_date is not None and start_date is None:
+    selectors = (table is not None, sync_all, sync_stock, sync_futures,
+                 sync_options, sync_etf, sync_ricequant, sync_ipo_score)
+    if sum(selectors) > 1:
+        raise click.UsageError(
+            "--table, --all, --stock, --etf, --futures, --options, --ricequant, "
+            "--ipo-score are mutually exclusive"
+        )
+    if init and not sync_ipo_score:
+        raise click.UsageError("--init requires --ipo-score")
+
+    effective_start = IPO_SCORE_INIT_START if init else start_date
+    if end_date is not None and effective_start is None:
         raise click.UsageError("--end-date requires --start-date")
-    if start_date is not None and end_date is not None and end_date < start_date:
+    if effective_start is not None and end_date is not None and end_date < effective_start:
         raise click.UsageError("--end-date must be on or after --start-date")
 
     with _make_pipeline() as pipeline:
@@ -152,7 +174,19 @@ def sync(
             if job is not None and not job.supports_date_range:
                 raise click.UsageError("date range options are only supported for daily partitioned tables")
 
-        if sync_all:
+        if sync_ipo_score:
+            for t in IPO_SCORE_TABLES:
+                if t in {"fina_audit", "fina_indicator", "dividend", "income", "balancesheet", "cashflow"}:
+                    # Initial history comes from this dataset's own first_date.
+                    pipeline.run(t, start_date=None if init else start_date, end_date=end_date)
+                    continue
+                dated = t in IPO_SCORE_DATED_TABLES
+                pipeline.run(
+                    t,
+                    start_date=effective_start if dated else None,
+                    end_date=end_date if dated else None,
+                )
+        elif sync_all:
             pipeline.run_all(start_date=start_date, end_date=end_date)
         elif sync_stock:
             for t in STOCK_TABLES:
@@ -172,7 +206,7 @@ def sync(
         elif table is not None:
             pipeline.run(table, start_date=start_date, end_date=end_date)
         else:
-            raise click.UsageError("需要指定 --table、--stock、--futures、--options、--etf、--ricequant 或 --all")
+            raise click.UsageError("需要指定 --table、--stock、--futures、--options、--etf、--ricequant、--ipo-score 或 --all")
 
 
 @cli.group()

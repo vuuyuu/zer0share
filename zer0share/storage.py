@@ -187,6 +187,25 @@ class DailyPartitionStore:
         return pq.read_table(path).to_pandas()
 
 
+class TickerPartitionStore:
+    """Reads and overwrites one Parquet file per ts_code partition."""
+
+    def __init__(self, root: Path):
+        self._dir = root
+
+    def write(self, ticker: str, df: pd.DataFrame) -> None:
+        partition_dir = self._dir / f"ts_code={ticker}"
+        partition_dir.mkdir(parents=True, exist_ok=True)
+        pq.write_table(pa.Table.from_pandas(df, preserve_index=False), partition_dir / "data.parquet")
+
+    def read(self, ticker: str) -> pd.DataFrame:
+        path = self._dir / f"ts_code={ticker}" / "data.parquet"
+        if not path.exists():
+            return pd.DataFrame()
+        # Read the file directly: Hive inference would add a second ts_code column.
+        return pq.ParquetFile(path).read().to_pandas()
+
+
 class SnapshotStore:
     """Reads and writes a single Parquet snapshot file."""
 

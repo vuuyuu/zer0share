@@ -257,3 +257,45 @@ def test_index_weight_store_write_and_exists(tmp_path):
     store.write("399300.SZ", "20240102", df)
     assert store.exists("399300.SZ", "20240102") is True
     assert (tmp_path / "index_weight" / "index_code=399300.SZ" / "date=20240102" / "data.parquet").exists()
+
+
+def test_ticker_partition_store_read_missing(tmp_path):
+    from zer0share.storage import TickerPartitionStore
+
+    assert TickerPartitionStore(tmp_path).read("000001.SZ").empty
+
+
+def test_ticker_partition_store_roundtrip_and_overwrite(tmp_path):
+    from zer0share.storage import TickerPartitionStore
+
+    root = tmp_path / "stock" / "financial" / "fina_audit"
+    store = TickerPartitionStore(root)
+    original = pd.DataFrame({
+        "ts_code": ["000001.SZ"], "ann_date": ["20240430"],
+        "audit_fees": [100.5], "audit_sign": [None],
+    })
+    store.write("000001.SZ", original)
+    pd.testing.assert_frame_equal(store.read("000001.SZ"), original)
+    assert (root / "ts_code=000001.SZ" / "data.parquet").exists()
+    for _ in range(2):
+        store.write("000001.SZ", original)
+        pd.testing.assert_frame_equal(store.read("000001.SZ"), original)
+    updated = original.assign(audit_fees=120.5)
+    store.write("000001.SZ", updated)
+    pd.testing.assert_frame_equal(store.read("000001.SZ"), updated)
+
+
+def test_ticker_partition_store_isolates_tickers(tmp_path):
+    from zer0share.storage import TickerPartitionStore
+
+    store = TickerPartitionStore(tmp_path)
+    first = pd.DataFrame({"ts_code": ["000001.SZ"], "value": [1]})
+    second = pd.DataFrame({"ts_code": ["600036.SH"], "value": [2]})
+    store.write("000001.SZ", first)
+    store.write("600036.SH", second)
+    store.write("000001.SZ", first)
+    pd.testing.assert_frame_equal(store.read("000001.SZ"), first)
+    pd.testing.assert_frame_equal(store.read("600036.SH"), second)
+    assert {p.parent.name for p in tmp_path.glob("*/data.parquet")} == {
+        "ts_code=000001.SZ", "ts_code=600036.SH",
+    }

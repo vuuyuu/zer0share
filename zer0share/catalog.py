@@ -10,14 +10,20 @@ named constants.
 from zer0share.query.repository import DailyTableSpec, TableSpec
 from zer0share.schema import (
     ADJ_FACTOR_COLS,
+    BALANCESHEET_COLS,
     BASIC_COLS,
+    CASHFLOW_COLS,
     CI_MEMBER_COLS,
     DAILY_BASIC_COLS,
     DAILY_COLS,
+    DIVIDEND_COLS,
     ETF_BASIC_COLS,
     ETF_INDEX_COLS,
     ETF_SHARE_SIZE_COLS,
     ETF_SH_CONS_COLS,
+    FINA_AUDIT_COLS,
+    FINA_INDICATOR_COLS,
+    INCOME_COLS,
     FUND_ADJ_COLS,
     FUND_DAILY_COLS,
     FT_LIMIT_COLS,
@@ -58,6 +64,64 @@ BASIC_SPEC = TableSpec(
     parquet_pattern="data.parquet",
     sync_table="basic",
     order_by="ts_code",
+)
+
+INCOME_SPEC = TableSpec(
+    name="income",
+    path_parts=("stock", "financial", "income"),
+    columns=INCOME_COLS,
+    parquet_pattern="ts_code=*/data.parquet",
+    sync_table="income",
+    order_by="ts_code, end_date, f_ann_date, ann_date, report_type, update_flag",
+    first_date="20100101",
+)
+
+BALANCESHEET_SPEC = TableSpec(
+    name="balancesheet",
+    path_parts=("stock", "financial", "balancesheet"),
+    columns=BALANCESHEET_COLS,
+    parquet_pattern="ts_code=*/data.parquet",
+    sync_table="balancesheet",
+    order_by="ts_code, end_date, f_ann_date, ann_date, report_type, update_flag",
+    first_date="20100101",
+)
+
+CASHFLOW_SPEC = TableSpec(
+    name="cashflow", path_parts=("stock", "financial", "cashflow"),
+    columns=CASHFLOW_COLS, parquet_pattern="ts_code=*/data.parquet",
+    sync_table="cashflow",
+    order_by="ts_code, end_date, f_ann_date, ann_date, report_type, update_flag",
+    first_date="20100101",
+)
+
+DIVIDEND_SPEC = TableSpec(
+    name="dividend",
+    path_parts=("stock", "financial", "dividend"),
+    columns=DIVIDEND_COLS,
+    parquet_pattern="ts_code=*/data.parquet",
+    sync_table="dividend",
+    order_by="ts_code, end_date, ann_date, imp_ann_date, ex_date",
+    first_date="20100101",
+)
+
+FINA_AUDIT_SPEC = TableSpec(
+    name="fina_audit",
+    path_parts=("stock", "financial", "fina_audit"),
+    columns=FINA_AUDIT_COLS,
+    parquet_pattern="ts_code=*/data.parquet",
+    sync_table="fina_audit",
+    order_by="ts_code, end_date, ann_date",
+    first_date="20100101",
+)
+
+FINA_INDICATOR_SPEC = TableSpec(
+    name="fina_indicator",
+    path_parts=("stock", "financial", "fina_indicator"),
+    columns=FINA_INDICATOR_COLS,
+    parquet_pattern="ts_code=*/data.parquet",
+    sync_table="fina_indicator",
+    order_by="ts_code, end_date, ann_date, update_flag",
+    first_date="20100101",
 )
 
 DAILY_KLINE_SPEC = DailyTableSpec(

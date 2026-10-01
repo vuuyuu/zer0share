@@ -1,6 +1,9 @@
 # Virtual environment
 .venv/
 
+# macOS Finder metadata
+.DS_Store
+
 # Build artifacts
 dist/
 *.egg-info/

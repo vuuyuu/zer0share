@@ -2,20 +2,27 @@ import tushare as ts
 import pandas as pd
 import requests
 import time
+from datetime import timedelta
 from loguru import logger
 
 import zer0share.dateutil as dateutil
 
 from zer0share.schema import (
     ADJ_FACTOR_COLS,
+    BALANCESHEET_COLS,
     BASIC_COLS,
+    CASHFLOW_COLS,
     CI_MEMBER_COLS,
     DAILY_BASIC_COLS,
     DAILY_COLS,
+    DIVIDEND_COLS,
     ETF_BASIC_COLS,
     ETF_INDEX_COLS,
     ETF_SHARE_SIZE_COLS,
     ETF_SH_CONS_COLS,
+    FINA_AUDIT_COLS,
+    FINA_INDICATOR_COLS,
+    INCOME_COLS,
     FUND_ADJ_COLS,
     FUND_DAILY_COLS,
     FT_LIMIT_COLS,
@@ -80,6 +87,61 @@ INDEX_DAILY_CODES = [
     "000922.SH",  # 中证红利
 ]
 
+_ANNOUNCEMENT_CHUNK_YEARS = 3
+_ANNOUNCEMENT_SATURATION_ROWS = 100
+
+
+def _fetch_announcement_history(
+    endpoint, table_name: str, columns: list[str], ts_code: str,
+    start_date: str, end_date: str,
+) -> pd.DataFrame:
+    """Fetch complete announcement-date history with truncation protection."""
+    start = dateutil.parse_date(start_date)
+    end = dateutil.parse_date(end_date)
+    if start > end:
+        raise ValueError("start_date is after end_date")
+    frames = []
+
+    def fetch_chunk(left, right):
+        df = endpoint(
+            ts_code=ts_code,
+            start_date=left.strftime("%Y%m%d"),
+            end_date=right.strftime("%Y%m%d"),
+            fields=",".join(columns),
+        )
+        if df is not None and len(df) >= _ANNOUNCEMENT_SATURATION_ROWS:
+            if left == right:
+                raise RuntimeError(
+                    f"{table_name}: saturated single announcement day at {ts_code} {left}"
+                )
+            middle = left + (right - left) // 2
+            fetch_chunk(left, middle)
+            fetch_chunk(middle + timedelta(days=1), right)
+            return
+        if df is not None and not df.empty:
+            frames.append(df.reindex(columns=columns))
+
+    current = start
+    while current <= end:
+        stop = min(
+            end,
+            current.replace(
+                year=min(current.year + _ANNOUNCEMENT_CHUNK_YEARS - 1, 9999),
+                month=12,
+                day=31,
+            ),
+        )
+        fetch_chunk(current, stop)
+        if stop == end:
+            break
+        current = stop + timedelta(days=1)
+    result = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=columns)
+    for column in ("ann_date", "f_ann_date", "end_date"):
+        result[column] = result[column].map(
+            lambda value: dateutil.date_str(value) if pd.notna(value) else None
+        )
+    return result
+
 FUTURES_EXCHANGES = ["CZCE", "SHFE", "DCE", "CFFEX", "INE", "GFEX"]
 
 FUT_INDEX_CODES = ["NHCI.NH", "NHAI.NH", "NHMI.NH"]
@@ -101,6 +163,121 @@ class TushareFetcher:
             fields=",".join(BASIC_COLS)
         )
         return _select_columns_or_empty(df, BASIC_COLS)
+
+    def fetch_income(
+        self, ts_code: str, start_date: str, end_date: str,
+    ) -> pd.DataFrame:
+        """Fetch income versions over announcement-date ranges.
+
+        The official income page does not state a row cap. Split any interval
+        returning 100 or more rows conservatively, so large responses never
+        silently become assumed-complete history. TickerSyncJob handles retry.
+        """
+        return _fetch_announcement_history(
+            self._pro.income, "income", INCOME_COLS, ts_code, start_date, end_date,
+        )
+
+    def fetch_balancesheet(
+        self, ts_code: str, start_date: str, end_date: str,
+    ) -> pd.DataFrame:
+        """Fetch balance-sheet versions over announcement-date ranges.
+
+        Tushare does not publish an ordinary-endpoint row limit. A response of
+        100 rows is therefore treated conservatively as possible truncation and
+        bisected until each response is below that protection threshold.
+        """
+        return _fetch_announcement_history(
+            self._pro.balancesheet, "balancesheet", BALANCESHEET_COLS,
+            ts_code, start_date, end_date,
+        )
+
+    def fetch_cashflow(self, ts_code: str, start_date: str, end_date: str) -> pd.DataFrame:
+        """Fetch cashflow versions by announcement date without is_calc filtering."""
+        return _fetch_announcement_history(
+            self._pro.cashflow, "cashflow", CASHFLOW_COLS, ts_code, start_date, end_date,
+        )
+
+    def fetch_dividend(
+        self, ts_code: str, start_date: str, end_date: str,
+    ) -> pd.DataFrame:
+        """Refresh one ticker's complete dividend history on every call."""
+        del start_date, end_date  # Dividend has no history-range parameters.
+        df = self._pro.dividend(ts_code=ts_code, fields=",".join(DIVIDEND_COLS))
+        if df is not None and len(df) >= 2000:
+            raise RuntimeError(f"dividend: possible 2000-row truncation for {ts_code}")
+        result = (df.reindex(columns=DIVIDEND_COLS).copy()
+                  if df is not None and not df.empty
+                  else pd.DataFrame(columns=DIVIDEND_COLS))
+        for column in (
+            "end_date", "ann_date", "record_date", "ex_date", "pay_date",
+            "div_listdate", "imp_ann_date", "base_date",
+        ):
+            result[column] = result[column].map(
+                lambda value: dateutil.date_str(value) if pd.notna(value) else None
+            )
+        return result
+
+    def fetch_fina_indicator(
+        self, ts_code: str, start_date: str, end_date: str,
+    ) -> pd.DataFrame:
+        """Fetch report-period windows; visibility is ann_date, not end_date.
+
+        Five calendar-year chunks avoid the ordinary 100-row cap. Saturated
+        chunks are bisected; a saturated single day fails rather than silently
+        storing truncated history. Retries belong to TickerSyncJob.
+        """
+        start = dateutil.parse_date(start_date)
+        end = dateutil.parse_date(end_date)
+        if start > end:
+            raise ValueError("start_date is after end_date")
+        frames = []
+
+        def fetch_chunk(left, right):
+            df = self._pro.fina_indicator(
+                ts_code=ts_code, start_date=left.strftime("%Y%m%d"),
+                end_date=right.strftime("%Y%m%d"),
+                fields=",".join(FINA_INDICATOR_COLS),
+            )
+            if df is not None and len(df) >= 100:
+                if left == right:
+                    raise RuntimeError(f"fina_indicator: 100-row limit at {ts_code} {left}")
+                middle = left + (right - left) // 2
+                fetch_chunk(left, middle)
+                fetch_chunk(dateutil.parse_date(dateutil.add_days(middle.strftime("%Y%m%d"), 1)), right)
+                return
+            if df is not None and not df.empty:
+                frames.append(df.reindex(columns=FINA_INDICATOR_COLS))
+
+        current = start
+        while current <= end:
+            stop = min(end, current.replace(year=min(current.year + 4, 9999), month=12, day=31))
+            fetch_chunk(current, stop)
+            if stop == end:
+                break
+            current = dateutil.parse_date(dateutil.add_days(stop.strftime("%Y%m%d"), 1))
+        result = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=FINA_INDICATOR_COLS)
+        for column in ("ann_date", "end_date"):
+            result[column] = result[column].map(
+                lambda value: dateutil.date_str(value) if pd.notna(value) else None
+            )
+        return result
+
+    def fetch_fina_audit(
+        self, ts_code: str, start_date: str, end_date: str,
+    ) -> pd.DataFrame:
+        """Fetch one ticker's audit history by announcement date."""
+        df = self._pro.fina_audit(
+            ts_code=ts_code,
+            start_date=start_date,
+            end_date=end_date,
+            fields=",".join(FINA_AUDIT_COLS),
+        )
+        result = _select_columns_or_empty(df, FINA_AUDIT_COLS).copy()
+        for column in ("ann_date", "end_date"):
+            result[column] = result[column].map(
+                lambda value: dateutil.date_str(value) if pd.notna(value) else None
+            )
+        return result
 
     def fetch_daily_kline(self, trade_date: str) -> pd.DataFrame:
         logger.debug(f"拉取日线行情: {trade_date}")
