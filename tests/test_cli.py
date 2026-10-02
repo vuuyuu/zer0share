@@ -177,7 +177,27 @@ def test_sync_industry_calls_pipeline():
         result = runner.invoke(cli, ["sync", "--table", "industry"])
 
     assert result.exit_code == 0
-    pipeline.run.assert_called_once_with("industry", start_date=None, end_date=None)
+    pipeline.run.assert_called_once_with(
+        "industry",
+        start_date=None,
+        end_date=None,
+        allow_non_trading_day=True,
+    )
+
+
+def test_sync_daily_kline_does_not_allow_non_trading_day():
+    runner = CliRunner()
+    pipeline = _make_mock_pipeline()
+
+    with patch("zer0share.cli._make_pipeline", return_value=pipeline):
+        result = runner.invoke(cli, ["sync", "--table", "daily_kline"])
+
+    assert result.exit_code == 0
+    pipeline.run.assert_called_once_with(
+        "daily_kline",
+        start_date=None,
+        end_date=None,
+    )
 
 
 def test_sync_ci_member_calls_pipeline():

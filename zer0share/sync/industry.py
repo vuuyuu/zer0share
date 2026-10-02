@@ -28,8 +28,14 @@ class IndustrySyncJob(SyncJob):
         self._store_classify = store_classify
         self._store_member = store_member
 
-    def run(self, rt: SyncRuntime, start_date=None, end_date=None) -> None:
-        if rt.calendar.skip_if_not_trading("SSE"):
+    def run(
+        self,
+        rt: SyncRuntime,
+        start_date=None,
+        end_date=None,
+        allow_non_trading_day: bool = False,
+    ) -> None:
+        if not allow_non_trading_day and rt.calendar.skip_if_not_trading("SSE"):
             return
         today = rt.calendar.today()
         try:

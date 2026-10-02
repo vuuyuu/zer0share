@@ -204,7 +204,10 @@ def sync(
             for t in RICEQUANT_TABLES:
                 pipeline.run(t, start_date=start_date, end_date=end_date)
         elif table is not None:
-            pipeline.run(table, start_date=start_date, end_date=end_date)
+            run_kwargs = {"start_date": start_date, "end_date": end_date}
+            if table == "industry":
+                run_kwargs["allow_non_trading_day"] = True
+            pipeline.run(table, **run_kwargs)
         else:
             raise click.UsageError("需要指定 --table、--stock、--futures、--options、--etf、--ricequant、--ipo-score 或 --all")
 

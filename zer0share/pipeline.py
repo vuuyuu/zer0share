@@ -23,10 +23,25 @@ class Pipeline:
         for job in ricequant.build_jobs(cfg, sources):
             self._registry[job.table_name] = job
 
-    def run(self, table_name: str, start_date: str | None = None, end_date: str | None = None) -> None:
+    def run(
+        self,
+        table_name: str,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        allow_non_trading_day: bool = False,
+    ) -> None:
         if table_name not in self._registry:
             raise ValueError(f"未知表: {table_name}")
-        result = self._registry[table_name].run(self._runtime, start_date, end_date)
+        job = self._registry[table_name]
+        if table_name == "industry":
+            result = job.run(
+                self._runtime,
+                start_date,
+                end_date,
+                allow_non_trading_day=allow_non_trading_day,
+            )
+        else:
+            result = job.run(self._runtime, start_date, end_date)
         if isinstance(result, TickerSyncResult) and not result.complete:
             raise RuntimeError(
                 f"{table_name}: ticker sync incomplete: failed={result.failed} "

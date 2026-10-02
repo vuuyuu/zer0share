@@ -652,6 +652,37 @@ def test_sync_industry_skips_non_trading_day(pipeline, cfg, fetcher, notifier):
     notifier.send.assert_not_called()
 
 
+def test_sync_industry_allows_explicit_non_trading_day(pipeline, cfg, fetcher):
+    classify_df = pd.DataFrame({
+        "index_code": ["801010.SI"],
+        "industry_name": ["农林牧渔"],
+        "level": ["L1"],
+        "parent_code": ["0"],
+        "industry_code": ["110000"],
+        "is_pub": ["1"],
+        "src": ["SW2021"],
+    })
+    member_df = pd.DataFrame({
+        "l1_code": ["801010.SI"], "l1_name": ["农林牧渔"],
+        "l2_code": ["801016.SI"], "l2_name": ["种植业"],
+        "l3_code": ["850111.SI"], "l3_name": ["种子"],
+        "ts_code": ["002041.SZ"], "name": ["登海种业"],
+        "in_date": ["20211213"], "out_date": [None], "is_new": ["Y"],
+    })
+    fetcher.fetch_sw_classify.return_value = classify_df
+    fetcher.fetch_sw_member.return_value = member_df
+    pipeline._runtime.calendar.skip_if_not_trading = MagicMock(return_value=True)
+    pipeline._runtime.calendar._today_fn = lambda: "20240518"
+
+    pipeline.run("industry", allow_non_trading_day=True)
+
+    pipeline._runtime.calendar.skip_if_not_trading.assert_not_called()
+    fetcher.fetch_sw_classify.assert_called_once()
+    fetcher.fetch_sw_member.assert_called_once()
+    assert SnapshotStore(cfg.data_dir / "stock" / "industry" / "sw_classify" / "data.parquet").read().equals(classify_df)
+    assert SnapshotStore(cfg.data_dir / "stock" / "industry" / "sw_member" / "data.parquet").read().equals(member_df)
+
+
 def test_sync_industry_failure_sends_alert_and_raises(pipeline, cfg, fetcher, notifier):
     fetcher.fetch_sw_classify.side_effect = RuntimeError("API error")
     _setup_trade_cal_sse(pipeline, cfg)
