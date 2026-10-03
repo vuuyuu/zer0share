@@ -12,6 +12,7 @@ from zer0share.quality.models import QualityRunOptions
 from zer0share.quality.reporter import QualityReporter, format_summary
 from zer0share.quality.runner import QualityRunner
 from zer0share.quality.targets import select_targets
+from zer0share.seed import FINANCIAL_TABLES, FinancialSeedRunner, FinancialSeedState, read_manifest
 from zer0share.sources import DataSources, RiceQuantFetcher, TushareFetcher
 from zer0share.storage import MetaStore
 from zer0share.universe import build_universes, build_universes_range
@@ -210,6 +211,109 @@ def sync(
             pipeline.run(table, **run_kwargs)
         else:
             raise click.UsageError("需要指定 --table、--stock、--futures、--options、--etf、--ricequant、--ipo-score 或 --all")
+
+
+def _seed_state_path(config_path: str) -> Path:
+    return load_config(Path(config_path)).data_dir / "ops" / "financial_seed_state.sqlite"
+
+
+def _parse_seed_tables(value: str) -> tuple[str, ...]:
+    tables = tuple(part.strip() for part in value.split(",") if part.strip())
+    if not tables or set(tables) - set(FINANCIAL_TABLES):
+        supported = ", ".join(FINANCIAL_TABLES)
+        raise click.BadParameter(f"仅支持: {supported}")
+    if len(set(tables)) != len(tables):
+        raise click.BadParameter("tables must not contain duplicates")
+    return tables
+
+
+@cli.group("seed-financial")
+def seed_financial() -> None:
+    """管理金融数据全量回填任务。"""
+
+
+@seed_financial.command("init")
+@click.option("--manifest", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True)
+@click.option("--tables", default=",".join(FINANCIAL_TABLES), show_default=True)
+@click.option("--start-date", callback=_validate_date, required=True)
+@click.option("--end-date", callback=_validate_date, required=True)
+@click.option("--config", "config_path", default="config/settings.toml", show_default=True)
+def seed_financial_init(
+    manifest: Path,
+    tables: str,
+    start_date: str,
+    end_date: str,
+    config_path: str,
+) -> None:
+    """从显式 ticker manifest 创建可恢复的金融回填任务。"""
+    if end_date < start_date:
+        raise click.UsageError("--end-date must be on or after --start-date")
+    parsed_tables = _parse_seed_tables(tables)
+    parsed_manifest = read_manifest(manifest)
+    with FinancialSeedState(_seed_state_path(config_path)) as state:
+        run_id = state.create_run(parsed_manifest, parsed_tables, start_date, end_date)
+    click.echo(
+        f"run_id={run_id} tickers={len(parsed_manifest.tickers)} "
+        f"tables={len(parsed_tables)} tasks={len(parsed_manifest.tickers) * len(parsed_tables)}"
+    )
+    if "dividend" in parsed_tables:
+        click.echo("dividend retains its existing full-history fetch semantics; --start-date/--end-date are recorded but ignored by its API fetcher")
+
+
+@seed_financial.command("run")
+@click.option("--run-id", required=True)
+@click.option("--manifest", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None)
+@click.option("--table", "table_name", type=click.Choice(FINANCIAL_TABLES), default=None)
+@click.option("--limit", type=click.IntRange(min=1), default=None)
+@click.option("--retry-failed", is_flag=True, default=False)
+@click.option("--config", "config_path", default="config/settings.toml", show_default=True)
+def seed_financial_run(
+    run_id: str,
+    manifest: Path | None,
+    table_name: str | None,
+    limit: int | None,
+    retry_failed: bool,
+    config_path: str,
+) -> None:
+    """运行或恢复金融回填任务。"""
+    with FinancialSeedState(_seed_state_path(config_path)) as state:
+        if manifest is not None:
+            state.verify_manifest(run_id, read_manifest(manifest))
+        with _make_pipeline(config_path) as pipeline:
+            jobs = {table: pipeline.registry[table] for table in FINANCIAL_TABLES}
+            result = FinancialSeedRunner(state, jobs).run(
+                run_id,
+                table_name=table_name,
+                limit=limit,
+                retry_failed=retry_failed,
+            )
+    click.echo(
+        f"attempted={result.attempted} success={result.success} "
+        f"valid_empty={result.valid_empty} failed={result.failed}"
+    )
+
+
+@seed_financial.command("status")
+@click.option("--run-id", required=True)
+@click.option("--show-failed", is_flag=True, default=False)
+@click.option("--config", "config_path", default="config/settings.toml", show_default=True)
+def seed_financial_status(run_id: str, show_failed: bool, config_path: str) -> None:
+    """查看金融回填任务状态。"""
+    with FinancialSeedState(_seed_state_path(config_path)) as state:
+        summary = state.summary(run_id)
+        metadata = state.run_metadata(run_id)
+        click.echo(f"run_id={run_id} tickers={metadata['ticker_count']} tables={metadata['tables_csv']}")
+        for status, count in summary["total"].items():
+            click.echo(f"{status}={count}")
+        for table, counts in summary["by_table"].items():
+            rendered = " ".join(f"{status}={count}" for status, count in counts.items())
+            click.echo(f"{table}: {rendered}")
+        if show_failed:
+            for task in state.failed_tasks(run_id):
+                click.echo(
+                    f"FAILED {task['table_name']} {task['ticker']} "
+                    f"{task['error_type']}: {task['error_message'] or ''}"
+                )
 
 
 @cli.group()
