@@ -417,22 +417,9 @@ def test_fetch_sw_classify_calls_all_levels(mock_pro):
     mock_pro.index_classify.assert_any_call(level="L3", src="SW2021")
 
 
-def test_fetch_sw_member_iterates_l1_codes(mock_pro):
-    # SW2014 L1 codes
-    sw2014_l1 = pd.DataFrame({
-        "index_code": ["801010.SI", "801030.SI"],
-        "industry_name": ["农林牧渔", "化工"],
-        "level": ["L1", "L1"],
-    })
-    # SW2021 L1 codes
-    sw2021_l1 = pd.DataFrame({
-        "index_code": ["801011.SI"],
-        "industry_name": ["农林牧渔"],
-        "level": ["L1"],
-    })
-    mock_pro.index_classify.side_effect = [sw2014_l1, sw2021_l1]
+def test_fetch_sw_member_uses_full_market_queries(mock_pro):
     member_dfs = [
-        # SW2014 801010 is_new="Y"
+        # Full-market is_new="Y"
         pd.DataFrame({
             "l1_code": ["801010.SI"], "l1_name": ["农林牧渔"],
             "l2_code": ["801016.SI"], "l2_name": ["种植业"],
@@ -440,7 +427,7 @@ def test_fetch_sw_member_iterates_l1_codes(mock_pro):
             "ts_code": ["002041.SZ"], "name": ["登海种业"],
             "in_date": ["20211213"], "out_date": [None], "is_new": ["Y"],
         }),
-        # SW2014 801010 is_new="N"
+        # Full-market is_new="N"
         pd.DataFrame({
             "l1_code": ["801010.SI"], "l1_name": ["农林牧渔"],
             "l2_code": ["801016.SI"], "l2_name": ["种植业"],
@@ -448,30 +435,6 @@ def test_fetch_sw_member_iterates_l1_codes(mock_pro):
             "ts_code": ["600313.SH"], "name": ["农发种业"],
             "in_date": ["20180101"], "out_date": ["20211213"], "is_new": ["N"],
         }),
-        # SW2014 801030 is_new="Y"
-        pd.DataFrame({
-            "l1_code": ["801030.SI"], "l1_name": ["化工"],
-            "l2_code": ["801033.SI"], "l2_name": ["化学原料"],
-            "l3_code": ["850321.SI"], "l3_name": ["纯碱"],
-            "ts_code": ["600291.SH"], "name": ["西水股份"],
-            "in_date": ["20211213"], "out_date": [None], "is_new": ["Y"],
-        }),
-        # SW2014 801030 is_new="N"
-        pd.DataFrame(columns=["l1_code", "l1_name", "l2_code", "l2_name",
-                               "l3_code", "l3_name", "ts_code", "name",
-                               "in_date", "out_date", "is_new"]),
-        # SW2021 801011 is_new="Y"
-        pd.DataFrame({
-            "l1_code": ["801011.SI"], "l1_name": ["农林牧渔"],
-            "l2_code": ["801017.SI"], "l2_name": ["种植业"],
-            "l3_code": ["850112.SI"], "l3_name": ["种子"],
-            "ts_code": ["002041.SZ"], "name": ["登海种业"],
-            "in_date": ["20211213"], "out_date": [None], "is_new": ["Y"],
-        }),
-        # SW2021 801011 is_new="N"
-        pd.DataFrame(columns=["l1_code", "l1_name", "l2_code", "l2_name",
-                               "l3_code", "l3_name", "ts_code", "name",
-                               "in_date", "out_date", "is_new"]),
     ]
     mock_pro.index_member_all.side_effect = member_dfs
     fetcher = TushareFetcher("fake_token")
@@ -480,23 +443,14 @@ def test_fetch_sw_member_iterates_l1_codes(mock_pro):
         df = fetcher.fetch_sw_member()
 
     assert list(df.columns) == SW_MEMBER_COLS
-    assert len(df) == 4
-    # SW2014
-    mock_pro.index_member_all.assert_any_call(l1_code="801010.SI", is_new="Y")
-    mock_pro.index_member_all.assert_any_call(l1_code="801010.SI", is_new="N")
-    mock_pro.index_member_all.assert_any_call(l1_code="801030.SI", is_new="Y")
-    mock_pro.index_member_all.assert_any_call(l1_code="801030.SI", is_new="N")
-    # SW2021
-    mock_pro.index_member_all.assert_any_call(l1_code="801011.SI", is_new="Y")
-    mock_pro.index_member_all.assert_any_call(l1_code="801011.SI", is_new="N")
+    assert len(df) == 2
+    mock_pro.index_member_all.assert_any_call(is_new="Y")
+    mock_pro.index_member_all.assert_any_call(is_new="N")
 
 
 def test_fetch_sw_member_preserves_date_strings(mock_pro):
-    sw2014_l1 = pd.DataFrame({"index_code": ["801010.SI"], "industry_name": ["农林牧渔"], "level": ["L1"]})
-    sw2021_l1 = pd.DataFrame({"index_code": ["801011.SI"], "industry_name": ["农林牧渔"], "level": ["L1"]})
-    mock_pro.index_classify.side_effect = [sw2014_l1, sw2021_l1]
     mock_pro.index_member_all.side_effect = [
-        # SW2014 801010 is_new="Y"
+        # Full-market is_new="Y"
         pd.DataFrame({
             "l1_code": ["801010.SI"], "l1_name": ["农林牧渔"],
             "l2_code": ["801016.SI"], "l2_name": ["种植业"],
@@ -504,7 +458,7 @@ def test_fetch_sw_member_preserves_date_strings(mock_pro):
             "ts_code": ["002041.SZ"], "name": ["登海种业"],
             "in_date": ["20211213"], "out_date": [None], "is_new": ["Y"],
         }),
-        # SW2014 801010 is_new="N"
+        # Full-market is_new="N"
         pd.DataFrame({
             "l1_code": ["801010.SI"], "l1_name": ["农林牧渔"],
             "l2_code": ["801016.SI"], "l2_name": ["种植业"],
@@ -512,34 +466,18 @@ def test_fetch_sw_member_preserves_date_strings(mock_pro):
             "ts_code": ["002041.SZ"], "name": ["登海种业"],
             "in_date": ["20211213"], "out_date": ["20220630"], "is_new": ["N"],
         }),
-        # SW2021 801011 is_new="Y"
-        pd.DataFrame({
-            "l1_code": ["801011.SI"], "l1_name": ["农林牧渔"],
-            "l2_code": ["801017.SI"], "l2_name": ["种植业"],
-            "l3_code": ["850112.SI"], "l3_name": ["种子"],
-            "ts_code": ["002041.SZ"], "name": ["登海种业"],
-            "in_date": ["20211213"], "out_date": [None], "is_new": ["Y"],
-        }),
-        # SW2021 801011 is_new="N"
-        pd.DataFrame(columns=["l1_code", "l1_name", "l2_code", "l2_name",
-                               "l3_code", "l3_name", "ts_code", "name",
-                               "in_date", "out_date", "is_new"]),
     ]
     fetcher = TushareFetcher("fake_token")
 
     with patch("zer0share.fetcher.time.sleep"):
         df = fetcher.fetch_sw_member()
 
-    # Two versions with different l3_codes don't deduplicate
-    assert len(df) == 2
+    assert len(df) == 1
     for row in df.itertuples():
         assert row.in_date == "20211213"
-    # SW2014 row kept last (has out_date from is_new="N")
-    sw2014_row = df[df["l3_code"] == "850111.SI"].iloc[0]
-    assert sw2014_row["out_date"] == "20220630"
-    # SW2021 row (is_new="Y", no out_date)
-    sw2021_row = df[df["l3_code"] == "850112.SI"].iloc[0]
-    assert sw2021_row["out_date"] is None
+    # N row supersedes the Y row for the same membership key.
+    row = df[df["l3_code"] == "850111.SI"].iloc[0]
+    assert row["out_date"] == "20220630"
 
 
 def test_fetch_ci_member_iterates_l1_codes(mock_pro):

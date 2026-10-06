@@ -613,18 +613,14 @@ class TushareFetcher:
 
     def fetch_sw_member(self) -> pd.DataFrame:
         frames = []
-        for src in self.SW_VERSIONS:
-            l1_df = self._pro.index_classify(level="L1", src=src)
-            if l1_df is None or l1_df.empty:
-                continue
-            l1_codes = l1_df["index_code"].tolist()
-            logger.info(f"拉取申万行业成分({src}): {len(l1_codes)} 个一级行业")
-            for l1_code in l1_codes:
-                for is_new in ("Y", "N"):
-                    df = self._pro.index_member_all(l1_code=l1_code, is_new=is_new)
-                    time.sleep(0.2)
-                    if df is not None and not df.empty:
-                        frames.append(df)
+        # index_member_all supports a full-market query when only is_new is
+        # supplied.  This preserves the existing Y/N result set while avoiding
+        # one request per L1 code (118 requests across both SW versions).
+        for is_new in ("Y", "N"):
+            logger.info(f"拉取申万行业成分全量: is_new={is_new}")
+            df = self._pro.index_member_all(is_new=is_new)
+            if df is not None and not df.empty:
+                frames.append(df)
         if not frames:
             return pd.DataFrame(columns=SW_MEMBER_COLS)
         result = (
