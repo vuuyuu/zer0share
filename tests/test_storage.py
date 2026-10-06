@@ -3,6 +3,7 @@ import pytest
 
 from zer0share.storage import (
     MetaStore,
+    ObservationSnapshotStore,
     read_trade_cal,
     write_trade_cal,
 )
@@ -59,6 +60,17 @@ def test_write_and_read_trade_cal(tmp_path):
 def test_read_trade_cal_returns_empty_if_not_exists(tmp_path):
     result = read_trade_cal(tmp_path, "SSE")
     assert result.empty
+
+
+def test_observation_snapshot_store_is_append_only(tmp_path):
+    store = ObservationSnapshotStore(tmp_path / "history" / "basic")
+    frame = pd.DataFrame({"ts_code": ["000001.SZ"], "list_status": ["L"]})
+    path = store.write(frame, "20261007T010203.000000Z")
+    assert path.exists()
+    with pytest.raises(FileExistsError):
+        store.write(frame, "20261007T010203.000000Z")
+    result = pd.read_parquet(path)
+    pd.testing.assert_frame_equal(result, frame)
 
 
 def test_load_trade_cal_from_parquet(tmp_path):

@@ -17,7 +17,7 @@ from loguru import logger
 
 import zer0share.dateutil as dateutil
 from zer0share.query.repository import DailyTableSpec, TableSpec
-from zer0share.storage import DailyPartitionStore, SnapshotStore
+from zer0share.storage import DailyPartitionStore, ObservationSnapshotStore, SnapshotStore
 from zer0share.sync import SyncRuntime
 
 PROGRESS_INTERVAL = 50
@@ -469,6 +469,7 @@ class SnapshotSyncJob(SyncJob):
         skip_non_trading: bool = True,
         exchange: str = "SSE",
         supports_date_range: bool = False,
+        observation_store: ObservationSnapshotStore | None = None,
     ):
         self.table_name = table_name
         self.spec = spec
@@ -477,6 +478,7 @@ class SnapshotSyncJob(SyncJob):
         self.skip_non_trading = skip_non_trading
         self.exchange = exchange
         self.supports_date_range = supports_date_range
+        self.observation_store = observation_store
 
     def run(
         self,
@@ -497,6 +499,9 @@ class SnapshotSyncJob(SyncJob):
             raise
 
         self.store.write(df)
+        if self.observation_store is not None and isinstance(df, pd.DataFrame):
+            observed_at = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+            self.observation_store.write(df, observed_at)
         rt.meta.update_last_date(self.spec.name, today)
         logger.info(f"{self.spec.name}: snapshot written ({len(df)} rows)")
         rt.notifier.send(

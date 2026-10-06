@@ -1,11 +1,12 @@
 from loguru import logger
-from zer0share.storage import SnapshotStore, DailyPartitionStore
+from zer0share.storage import DailyPartitionStore, ObservationSnapshotStore, SnapshotStore
 from zer0share.sync import SyncRuntime
 from zer0share.sync._jobs import SnapshotSyncJob, SyncJob
 from zer0share.catalog import SW_CLASSIFY_SPEC, SW_MEMBER_SPEC, SW_DAILY_SPEC, CI_MEMBER_SPEC
 import zer0share.dateutil as dateutil
 import pandas as pd
 import time
+import datetime as dt
 
 # SW2021 L1 industry codes (31 industries)
 SW_L1_CODES = [
@@ -22,11 +23,13 @@ class IndustrySyncJob(SyncJob):
     table_name = "industry"
     supports_date_range = False
 
-    def __init__(self, fetch_classify, fetch_member, store_classify: SnapshotStore, store_member: SnapshotStore):
+    def __init__(self, fetch_classify, fetch_member, store_classify: SnapshotStore, store_member: SnapshotStore, observation_store_classify: ObservationSnapshotStore | None = None, observation_store_member: ObservationSnapshotStore | None = None):
         self._fetch_classify = fetch_classify
         self._fetch_member = fetch_member
         self._store_classify = store_classify
         self._store_member = store_member
+        self._observation_store_classify = observation_store_classify
+        self._observation_store_member = observation_store_member
 
     def run(
         self,
@@ -38,14 +41,23 @@ class IndustrySyncJob(SyncJob):
         if not allow_non_trading_day and rt.calendar.skip_if_not_trading("SSE"):
             return
         today = rt.calendar.today()
+        observed_at = (
+            dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+            if self._observation_store_classify is not None or self._observation_store_member is not None
+            else None
+        )
         try:
             df_classify = self._fetch_classify()
             self._store_classify.write(df_classify)
+            if self._observation_store_classify is not None and isinstance(df_classify, pd.DataFrame):
+                self._observation_store_classify.write(df_classify, observed_at)
             rt.meta.update_last_date("sw_classify", today)
             logger.info(f"sw_classify 同步完成: {len(df_classify)} 条")
 
             df_member = self._fetch_member()
             self._store_member.write(df_member)
+            if self._observation_store_member is not None and isinstance(df_member, pd.DataFrame):
+                self._observation_store_member.write(df_member, observed_at)
             rt.meta.update_last_date("sw_member", today)
             logger.info(f"sw_member 同步完成: {len(df_member)} 条")
 
@@ -148,6 +160,8 @@ def build_jobs(cfg, fetcher) -> list[SyncJob]:
             fetch_member=fetcher.fetch_sw_member,
             store_classify=SnapshotStore(d / "stock" / "industry" / "sw_classify" / "data.parquet"),
             store_member=SnapshotStore(d / "stock" / "industry" / "sw_member" / "data.parquet"),
+            observation_store_classify=ObservationSnapshotStore(d / "stock" / "history" / "industry" / "sw_classify"),
+            observation_store_member=ObservationSnapshotStore(d / "stock" / "history" / "industry" / "sw_member"),
         ),
         SwDailySyncJob(
             fetch=fetcher.fetch_sw_daily,

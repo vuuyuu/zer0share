@@ -2,7 +2,7 @@ from zer0share.catalog import (
     ADJ_FACTOR_SPEC, BASIC_SPEC, DAILY_BASIC_SPEC, DAILY_KLINE_SPEC,
     STK_LIMIT_SPEC, STOCK_ST_SPEC, SUSPEND_D_SPEC,
 )
-from zer0share.storage import DailyPartitionStore, SnapshotStore
+from zer0share.storage import DailyPartitionStore, ObservationSnapshotStore, SnapshotStore
 from zer0share.sync._jobs import DailySyncJob, SnapshotSyncJob, SyncJob
 
 
@@ -14,6 +14,7 @@ def build_jobs(cfg, fetcher) -> list[SyncJob]:
             fetch=fetcher.fetch_basic,
             store=SnapshotStore(d / "stock" / "basic" / "data.parquet"),
             skip_non_trading=False,
+            observation_store=ObservationSnapshotStore(d / "stock" / "history" / "basic"),
         ),
         DailySyncJob(
             table_name=DAILY_KLINE_SPEC.name, spec=DAILY_KLINE_SPEC,

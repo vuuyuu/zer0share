@@ -222,6 +222,22 @@ class SnapshotStore:
         return pq.read_table(self._path).to_pandas()
 
 
+class ObservationSnapshotStore:
+    """Append-only Parquet snapshots keyed by their observation timestamp."""
+
+    def __init__(self, root: Path):
+        self._root = root
+
+    def write(self, df: pd.DataFrame, observed_at: str) -> Path:
+        partition = self._root / f"observed_at={observed_at}"
+        path = partition / "data.parquet"
+        if path.exists():
+            raise FileExistsError(f"observation already exists: {path}")
+        partition.mkdir(parents=True, exist_ok=False)
+        pq.write_table(pa.Table.from_pandas(df, preserve_index=False), path)
+        return path
+
+
 class IndexWeightStore:
     """Reads and writes Parquet files partitioned by index_code=X/date=YYYYMMDD."""
 

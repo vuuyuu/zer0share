@@ -274,6 +274,9 @@ def test_sync_basic_first_run_writes_parquet(pipeline, cfg, fetcher):
     _setup_trade_cal_sse(pipeline, cfg)
     pipeline.run("basic")
     assert (cfg.data_dir / "stock" / "basic" / "data.parquet").exists()
+    archives = list((cfg.data_dir / "stock" / "history" / "basic").glob("observed_at=*/data.parquet"))
+    assert len(archives) == 1
+    assert pd.read_parquet(archives[0]).equals(_basic_df())
 
 
 def test_sync_basic_refreshes_even_if_recently_updated(pipeline, cfg, fetcher):
