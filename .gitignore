@@ -32,3 +32,8 @@ uv.lock
 
 # Claude local config
 .claude/
+CLAUDE.md
+AGENTS.md
+
+# macOS
+.DS_Store
