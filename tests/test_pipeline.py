@@ -772,36 +772,39 @@ def test_sync_index_daily_updates_metastore(pipeline, cfg, fetcher):
 # 9. idx_anns
 # ---------------------------------------------------------------------------
 
-def test_sync_idx_anns_writes_calendar_days_and_empty_partitions(pipeline, cfg, fetcher):
-    pipeline._runtime.calendar._today_fn = lambda: "20240107"
-    fetcher.fetch_idx_anns.side_effect = [
-        _idx_anns_df("20240105"),
-        pd.DataFrame(columns=["ann_date", "title", "url", "source", "type"]),
-        _idx_anns_df("20240107"),
-    ]
+def test_sync_idx_anns_fetches_by_month_and_writes_partitions(pipeline, cfg, fetcher):
+    pipeline._runtime.calendar._today_fn = lambda: "20240131"
+    fetcher.fetch_idx_anns.return_value = pd.concat(
+        [_idx_anns_df("20240105"), _idx_anns_df("20240107")],
+        ignore_index=True,
+    )
 
-    with patch("zer0share.sync._jobs.time.sleep"):
-        pipeline.run("idx_anns", start_date="20240105", end_date="20240107")
+    with patch("zer0share.sync.index.time.sleep"):
+        pipeline.run("idx_anns", start_date="20240101", end_date="20240131")
 
     assert fetcher.fetch_idx_anns.call_args_list == [
-        call("20240105"),
-        call("20240106"),
-        call("20240107"),
+        call("20240101", "20240131"),
     ]
     assert (cfg.data_dir / "index" / "idx_anns" / "date=20240105" / "data.parquet").exists()
-    assert (cfg.data_dir / "index" / "idx_anns" / "date=20240106" / "data.parquet").exists()
     assert (cfg.data_dir / "index" / "idx_anns" / "date=20240107" / "data.parquet").exists()
-    assert pipeline._runtime.meta.get_last_date("idx_anns") == "20240107"
+    assert pipeline._runtime.meta.get_last_date("idx_anns") == "20240131"
 
 
 def test_sync_idx_anns_skips_existing_partition_and_advances_meta(pipeline, cfg, fetcher):
     DailyPartitionStore(cfg.data_dir / "index" / "idx_anns").write("20240106", _idx_anns_df("20240106"))
-    pipeline._runtime.calendar._today_fn = lambda: "20240106"
+    pipeline._runtime.calendar._today_fn = lambda: "20240131"
+    fetcher.fetch_idx_anns.return_value = pd.concat(
+        [_idx_anns_df("20240106"), _idx_anns_df("20240108")],
+        ignore_index=True,
+    )
 
-    pipeline.run("idx_anns", start_date="20240106", end_date="20240106")
+    with patch("zer0share.sync.index.time.sleep"):
+        pipeline.run("idx_anns", start_date="20240106", end_date="20240131")
 
-    fetcher.fetch_idx_anns.assert_not_called()
-    assert pipeline._runtime.meta.get_last_date("idx_anns") == "20240106"
+    fetcher.fetch_idx_anns.assert_called_once_with("20240106", "20240131")
+    # 已存在的 20240106 跳过，新增 20240108 写入
+    assert (cfg.data_dir / "index" / "idx_anns" / "date=20240108" / "data.parquet").exists()
+    assert pipeline._runtime.meta.get_last_date("idx_anns") == "20240131"
 
 # ---------------------------------------------------------------------------
 # 10. fut_basic

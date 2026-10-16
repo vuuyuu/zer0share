@@ -8,7 +8,7 @@ from zer0share.catalog import IDX_ANNS_SPEC, INDEX_DAILY_SPEC, INDEX_WEIGHT_SPEC
 from zer0share.fetcher import INDEX_DAILY_CODES
 from zer0share.storage import DailyPartitionStore, IndexWeightStore
 from zer0share.sync import SyncRuntime
-from zer0share.sync._jobs import CalendarDateSyncJob, SyncJob
+from zer0share.sync._jobs import SyncJob
 
 INDEX_CODES = ["399300.SZ", "000905.SH", "000852.SH"]
 
@@ -162,6 +162,59 @@ class IndexDailySyncJob(SyncJob):
         rt.notifier.send(msg)
 
 
+class IdxAnnsSyncJob(SyncJob):
+    table_name = "idx_anns"
+    supports_date_range = True
+
+    def __init__(self, fetch, store: DailyPartitionStore):
+        self._fetch = fetch
+        self._store = store
+
+    def run(self, rt: SyncRuntime, start_date=None, end_date=None) -> None:
+        today = rt.calendar.today()
+        end = end_date or today
+        last = rt.meta.get_last_date(self.table_name)
+        start = start_date or (
+            dateutil.add_days(last, 1) if last else IDX_ANNS_SPEC.first_date
+        )
+        if start > end:
+            logger.info(f"idx_anns 已覆盖到 {last}，无需同步")
+            return
+
+        ranges = dateutil.month_ranges(start, end)
+        logger.info(f"idx_anns 同步开始: {start} ~ {end}, 共 {len(ranges)} 个月度窗口")
+
+        success = empty_months = skipped_existing = 0
+        try:
+            for month_start, month_end in ranges:
+                df = self._fetch(month_start, month_end)
+                # idx_anns 限频 50次/分钟，1.5s ≈ 40次/分钟
+                time.sleep(1.5)
+                if df.empty:
+                    empty_months += 1
+                    continue
+                for ann_date_value, part in df.groupby("ann_date"):
+                    ann_date = str(ann_date_value)
+                    if self._store.exists(ann_date):
+                        skipped_existing += 1
+                        continue
+                    self._store.write(ann_date, part.reset_index(drop=True))
+                    success += 1
+            rt.meta.update_last_date(self.table_name, end)
+        except Exception as e:
+            logger.error(f"idx_anns 同步失败: {e}")
+            rt.notifier.send(f"idx_anns 同步失败\n{e}")
+            raise
+
+        msg = (
+            f"idx_anns 同步完成\n"
+            f"日期：{start} ~ {end}\n"
+            f"写入 {success} 天｜空窗口 {empty_months}｜已存在 {skipped_existing}"
+        )
+        logger.info(msg)
+        rt.notifier.send(msg)
+
+
 def build_jobs(cfg, fetcher) -> list[SyncJob]:
     d = cfg.data_dir
     return [
@@ -173,11 +226,8 @@ def build_jobs(cfg, fetcher) -> list[SyncJob]:
             fetch=fetcher.fetch_index_daily,
             store=DailyPartitionStore(d / "index" / "index_daily"),
         ),
-        CalendarDateSyncJob(
-            table_name=IDX_ANNS_SPEC.name,
-            spec=IDX_ANNS_SPEC,
+        IdxAnnsSyncJob(
             fetch=fetcher.fetch_idx_anns,
             store=DailyPartitionStore(d / "index" / "idx_anns"),
-            write_empty=True,
         ),
     ]

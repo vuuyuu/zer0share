@@ -189,14 +189,15 @@ class TushareFetcher:
         combined = pd.concat(frames, ignore_index=True)[STK_HOLDERTRADE_COLS]
         return combined.drop_duplicates(ignore_index=True)
 
-    def fetch_idx_anns(self, ann_date: str) -> pd.DataFrame:
-        logger.debug(f"拉取指数公告: {ann_date}")
+    def fetch_idx_anns(self, start_date: str, end_date: str) -> pd.DataFrame:
+        logger.debug(f"拉取指数公告: {start_date}~{end_date}")
         frames = []
         limit = 1000
         offset = 0
         while True:
             df = self._pro.idx_anns(
-                ann_date=ann_date,
+                start_date=start_date,
+                end_date=end_date,
                 fields=",".join(IDX_ANNS_COLS),
                 limit=limit,
                 offset=offset,
