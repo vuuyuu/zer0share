@@ -250,7 +250,9 @@ def test_fetch_idx_anns_calls_api_with_fields_and_pagination(mock_pro):
     mock_pro.idx_anns.return_value = pd.DataFrame([_idx_anns_row()])
     fetcher = TushareFetcher("fake_token")
 
-    fetcher.fetch_idx_anns("20260401", "20260430")
+    with patch("zer0share.fetcher.time.sleep") as sleep:
+        fetcher.fetch_idx_anns("20260401", "20260430")
+    sleep.assert_called_once_with(1.5)
 
     mock_pro.idx_anns.assert_called_once_with(
         start_date="20260401",
@@ -277,7 +279,15 @@ def test_fetch_idx_anns_combines_paginated_rows(mock_pro):
     mock_pro.idx_anns.side_effect = [first_page, second_page]
     fetcher = TushareFetcher("fake_token")
 
-    df = fetcher.fetch_idx_anns("20260401", "20260430")
+    events = []
+    pages = iter([first_page, second_page])
+    def fetch_page(**kwargs):
+        events.append(("request", kwargs["offset"]))
+        return next(pages)
+    mock_pro.idx_anns.side_effect = fetch_page
+    with patch("zer0share.fetcher.time.sleep", side_effect=lambda seconds: events.append(("sleep", seconds))):
+        df = fetcher.fetch_idx_anns("20260401", "20260430")
+    assert events == [("request", 0), ("sleep", 1.5), ("request", 1000), ("sleep", 1.5)]
 
     assert list(df.columns) == IDX_ANNS_COLS
     assert len(df) == 1001
@@ -291,7 +301,9 @@ def test_fetch_idx_anns_returns_empty_when_none(mock_pro):
     mock_pro.idx_anns.return_value = None
     fetcher = TushareFetcher("fake_token")
 
-    df = fetcher.fetch_idx_anns("20260401", "20260430")
+    with patch("zer0share.fetcher.time.sleep") as sleep:
+        df = fetcher.fetch_idx_anns("20260401", "20260430")
+    sleep.assert_called_once_with(1.5)
 
     assert df.empty
     assert list(df.columns) == IDX_ANNS_COLS

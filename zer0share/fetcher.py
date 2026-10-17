@@ -202,6 +202,8 @@ class TushareFetcher:
                 limit=limit,
                 offset=offset,
             )
+            # 每页请求后等待，覆盖月内分页和跨月请求（50 次/分钟）。
+            time.sleep(1.5)
             if df is None or df.empty:
                 break
             frames.append(df)

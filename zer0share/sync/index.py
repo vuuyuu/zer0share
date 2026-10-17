@@ -188,8 +188,6 @@ class IdxAnnsSyncJob(SyncJob):
         try:
             for month_start, month_end in ranges:
                 df = self._fetch(month_start, month_end)
-                # idx_anns 限频 50次/分钟，1.5s ≈ 40次/分钟
-                time.sleep(1.5)
                 if df.empty:
                     empty_months += 1
                     continue
