@@ -1,4 +1,6 @@
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+import threading
 from unittest.mock import MagicMock, call, patch
 
 import pandas as pd
@@ -6,7 +8,7 @@ import pytest
 import requests
 
 from zer0share.finance.catalog import FINANCE_SPECS
-from zer0share.finance.fetcher import fetch_financial
+from zer0share.finance.fetcher import RateLimiter, fetch_financial
 from zer0share.finance.storage import FinanceStore
 from zer0share.api import LocalPro
 from zer0share.storage import MetaStore, SnapshotStore
@@ -330,3 +332,74 @@ def test_historical_prefixed_code_download_storage_query_and_refresh(tmp_path, r
     assert local.dividend(ts_code="600018.SH").iloc[0].cash_div == 0.2
     job.run(runtime)
     assert len(local.dividend(ts_code="T600018.SH")) == 1
+
+
+# --- Rate limiter ---
+
+def test_rate_limiter_waits_the_configured_interval(monkeypatch):
+    limiter = RateLimiter(requests_per_minute=100)  # 0.6s interval
+    clock = {"t": 0.0}
+    sleeps = []
+    monkeypatch.setattr("zer0share.finance.fetcher.time.monotonic", lambda: clock["t"])
+
+    def fake_sleep(seconds):
+        clock["t"] += seconds
+        sleeps.append(seconds)
+
+    monkeypatch.setattr("zer0share.finance.fetcher.time.sleep", fake_sleep)
+    limiter.wait()
+    limiter.wait()
+    limiter.wait()
+    assert sleeps == [0.6, 0.6]
+    assert clock["t"] == pytest.approx(1.2)
+
+
+def test_rate_limiter_serializes_concurrent_waiters(monkeypatch):
+    limiter = RateLimiter(requests_per_minute=100)
+    clock = {"t": 0.0}
+    monkeypatch.setattr("zer0share.finance.fetcher.time.monotonic", lambda: clock["t"])
+
+    def fake_sleep(seconds):
+        clock["t"] += seconds
+
+    monkeypatch.setattr("zer0share.finance.fetcher.time.sleep", fake_sleep)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(lambda _: limiter.wait(), range(10)))
+    # 10 requests at 0.6s spacing => the clock advanced 9 intervals.
+    assert clock["t"] == pytest.approx(0.6 * 9)
+
+
+def test_rate_limiter_rejects_nonpositive_rate():
+    with pytest.raises(ValueError, match="positive"):
+        RateLimiter(0)
+
+
+# --- Concurrent sync job ---
+
+def test_concurrent_run_fetches_in_parallel(tmp_path, runtime):
+    # A barrier forces both fetches to be in flight at once: if the executor ran
+    # them sequentially the barrier would time out and the run would raise.
+    barrier = threading.Barrier(2)
+
+    def fetch(table, code, start, end):
+        barrier.wait(timeout=5)
+        return pd.DataFrame()
+
+    job = FinanceSyncJob(FINANCE_SPECS["income"], fetch, tmp_path, max_workers=2)
+    job.run(runtime)
+    assert runtime.meta.get_last_date("finance:income:000001.SZ") == "20261019"
+    assert runtime.meta.get_last_date("finance:income:000002.SZ") == "20261019"
+
+
+def test_concurrent_failure_keeps_earlier_stock_data(tmp_path, runtime):
+    def fetch(table, code, start, end):
+        if code == "000002.SZ":
+            raise RuntimeError("permission")
+        return pd.DataFrame([row(code=code, revenue=1)])
+
+    job = FinanceSyncJob(FINANCE_SPECS["income"], fetch, tmp_path, max_workers=2)
+    with pytest.raises(RuntimeError):
+        job.run(runtime)
+    assert job._store.read("000001.SZ").iloc[0].revenue == 1
+    assert runtime.meta.get_last_date("finance:income:000001.SZ") == "20261019"
+    assert runtime.meta.get_last_date("finance:income:000002.SZ") is None

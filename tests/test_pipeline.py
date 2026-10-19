@@ -35,6 +35,8 @@ def cfg(tmp_path):
     c.data_dir = tmp_path
     c.db_path = tmp_path / "meta.duckdb"
     c.ricequant.enabled = False
+    c.finance.requests_per_minute = 500
+    c.finance.max_workers = 8
     return c
 
 

@@ -69,6 +69,12 @@ class QualityConfig:
 
 
 @dataclass(frozen=True)
+class FinanceConfig:
+    requests_per_minute: int
+    max_workers: int
+
+
+@dataclass(frozen=True)
 class Config:
     tushare_token: str
     data_dir: Path
@@ -81,6 +87,7 @@ class Config:
     ricequant: RiceQuantConfig
     quality: QualityConfig
     news: NewsConfig
+    finance: FinanceConfig
 
 
 def _parse_news(raw: dict) -> NewsConfig:
@@ -181,6 +188,20 @@ def _parse_quality(raw_quality: dict | None) -> QualityConfig:
     )
 
 
+def _parse_finance(raw_finance: dict | None) -> FinanceConfig:
+    raw_finance = raw_finance or {}
+    requests_per_minute = int(raw_finance.get("requests_per_minute", 500))
+    max_workers = int(raw_finance.get("max_workers", 8))
+    if requests_per_minute <= 0:
+        raise ValueError("finance.requests_per_minute must be positive")
+    if max_workers <= 0:
+        raise ValueError("finance.max_workers must be positive")
+    return FinanceConfig(
+        requests_per_minute=requests_per_minute,
+        max_workers=max_workers,
+    )
+
+
 def _parse_wecom_notifier(raw_notifier: dict) -> tuple[str, bool]:
     if "wecom_webhook_url" in raw_notifier:
         return raw_notifier["wecom_webhook_url"], bool(raw_notifier["enabled"])
@@ -212,6 +233,7 @@ def load_config(path: Path = Path("config/settings.toml")) -> Config:
             ricequant=_parse_ricequant(raw),
             quality=_parse_quality(raw.get("quality")),
             news=_parse_news(raw),
+            finance=_parse_finance(raw.get("finance")),
         )
     except KeyError as e:
         raise KeyError(f"配置文件缺少必要字段: {e}") from e

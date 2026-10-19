@@ -98,3 +98,7 @@ enabled = false
 mode = "daily"
 markets = ["stock", "index", "etf", "futures", "options"]
 notify_on = ["warn", "fail"]
+
+[finance]
+requests_per_minute = 500   # 5000积分=500/分钟；2000积分请改200
+max_workers = 8             # 并发请求线程数

@@ -18,6 +18,8 @@ def cfg(tmp_path):
     c.ricequant.stock_minute.batch_size = 2
     c.ricequant.stock_minute.adjust_type = "none"
     c.ricequant.stock_minute.skip_suspended = True
+    c.finance.requests_per_minute = 500
+    c.finance.max_workers = 8
     return c
 
 

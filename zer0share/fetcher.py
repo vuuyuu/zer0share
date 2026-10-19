@@ -94,9 +94,10 @@ class TushareFetcher:
     def __init__(self, token: str):
         self._pro = ts.pro_api(token)
 
-    def fetch_financial(self, table: str, ts_code: str, start_date: str, end_date: str) -> pd.DataFrame:
+    def fetch_financial(self, table: str, ts_code: str, start_date: str, end_date: str,
+                        limiter=None) -> pd.DataFrame:
         from zer0share.finance.fetcher import fetch_financial
-        return fetch_financial(self._pro, table, ts_code, start_date, end_date)
+        return fetch_financial(self._pro, table, ts_code, start_date, end_date, limiter)
 
     def fetch_basic(self) -> pd.DataFrame:
         logger.info("拉取 stock_basic")
