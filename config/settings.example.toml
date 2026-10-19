@@ -51,6 +51,18 @@ ricequant_stock_minute = "16:30"
 ricequant_etf_basic = "02:10"
 ricequant_etf_minute = "16:35"
 
+# 晚间 — 财务专题（3min 间隔，21:00~21:27；需积分 ≥ 2000）
+dividend          = "21:00"   # 分红送股（每日 20:00~21:00 更新）
+income            = "21:03"   # 利润表
+balancesheet      = "21:06"   # 资产负债表
+cashflow          = "21:09"   # 现金流量表
+forecast          = "21:12"   # 业绩预告
+express           = "21:15"   # 业绩快报
+fina_indicator    = "21:18"   # 财务指标
+fina_audit        = "21:21"   # 财务审计意见
+fina_mainbz       = "21:24"   # 主营业务构成
+disclosure_date   = "21:27"   # 财报披露日期
+
 [notifier]
 enabled = false  # 至少启用一个通道后改为 true
 

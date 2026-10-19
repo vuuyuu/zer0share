@@ -127,7 +127,7 @@ uv run python main.py sync --table income --start-date 20100101 --end-date 20151
 
 首次默认从 **20000101** 同步至今，后续手动执行同一命令，刷新**上一年 1 月 1 日至今**。刷新窗口内以完整源结果替换，反映新增、修改和删除，窗口外保留。支持按股票保存进度，中断后再次运行可继续；每次请求均限流，达到条数上限时拆分区间，无法确认完整性时保留旧数据并报错。
 
-数据写入 `data/finance/<表名>/ts_code=<股票代码>/data.parquet`，保留 Tushare 原始字段和口径，不进行 PIT 重建、历史版本归档或策略评分。`sync --all` 包含财务专题，`sync --stock` 保持原有范围；财务表没有默认定时任务。各表日期字段、接口限制和更多示例见[财务专题说明](docs/finance.md)。
+数据写入 `data/finance/<表名>/ts_code=<股票代码>/data.parquet`，保留 Tushare 原始字段和口径，不进行 PIT 重建、历史版本归档或策略评分。`sync --all` 包含财务专题，`sync --stock` 保持原有范围。示例配置已安排财务 10 表从 21:00 开始、每隔 3 分钟触发，运行 `scheduler start` 后生效；触发时间不代表上一任务已完成。各表日期字段、接口限制和更多示例见[财务专题说明](docs/finance.md)。
 
 ## 本地查询 API
 

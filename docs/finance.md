@@ -26,7 +26,7 @@ uv run python main.py sync --table fina_mainbz      # 主营业务构成
 uv run python main.py sync --table disclosure_date  # 财报披露日期
 ```
 
-`sync --all` 包含财务专题；`sync --stock` 保持原有范围。没有自动添加财务定时任务，后续手动执行 `sync --finance` 即可。
+`sync --all` 包含财务专题；`sync --stock` 保持原有范围。可手动执行 `sync --finance`，也可运行 `scheduler start` 使用配置中的定时任务：分红送股 21:00、利润表 21:03、资产负债表 21:06、现金流量表 21:09、业绩预告 21:12、业绩快报 21:15、财务指标 21:18、审计意见 21:21、主营业务构成 21:24、披露日期 21:27。这些是独立触发时间，任务耗时超过 3 分钟时会重叠；首次历史回填建议先手动完成。
 
 ## 历史范围与刷新
 
