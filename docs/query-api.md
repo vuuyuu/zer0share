@@ -46,6 +46,11 @@ sw_daily = pro.sw_daily(trade_date="20240131")                     # 申万行�
 # 股票池
 pool = pro.universe("univ_trade_hs300", trade_date="20240131")     # 某日沪深300交易池
 
+# 财务（原始源数据；period 精确指定报告期）
+income = pro.income(ts_code="000001.SZ", period="20251231")
+dividend = pro.dividend(ts_code="000001.SZ", start_date="20250101", end_date="20261231")
+indicators = pro.fina_indicator(period="20251231", fields="ts_code,end_date,roe,eps")
+
 # ETF
 etf_basic = pro.etf_basic(list_status="L", exchange="SH")
 etf_index = pro.etf_index(ts_code="000300.SH")
@@ -110,6 +115,11 @@ flash = pro.news(start_date="20250324", end_date="20250324", keyword="降准")  
 | `index_member_all` | 查询申万股票-行业映射（支持历史变更） |
 | `ci_index_member` | 查询中信股票-行业映射（支持历史变更） |
 | `sw_daily` | 查询已同步的申万行业指数日线行情 |
+| `income` / `balancesheet` / `cashflow` | 利润表、资产负债表、现金流量表 |
+| `dividend` | 分红送股 |
+| `forecast` / `express` | 业绩预告、业绩快报 |
+| `fina_indicator` / `fina_audit` | 财务指标、审计意见 |
+| `fina_mainbz` / `disclosure_date` | 主营业务构成、财报披露日期 |
 | `etf_basic` | 查询已同步的 ETF 基础信息 |
 | `etf_index` | 查询已同步的 ETF 基准指数列表 |
 | `fund_daily` | 查询已同步的 ETF 日线行情 |

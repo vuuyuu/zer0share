@@ -9,6 +9,7 @@
 | 数据 | 积分要求 |
 |---|---|
 | 基础行情（日历、基础信息、日线、复权因子、每日指标） | ≥ 2000 |
+| 财务专题 10 表（普通逐股票接口） | ≥ 2000 |
 | `stock_st`（每日 ST 列表） | ≥ 3000 |
 | 中信行业成分、`opt_basic`、部分期货扩展数据 | ≥ 5000 |
 | ETF 日线行情 `fund_daily` | ≥ 5000（8000 积分频次更高） |
@@ -23,6 +24,7 @@
 ```bash
 uv run python main.py sync --all      # 全部
 uv run python main.py sync --stock    # 股票核心 + 指数 + 行业
+uv run python main.py sync --finance  # 财务专题（10 表；先同步 basic）
 uv run python main.py sync --etf      # ETF 专题
 uv run python main.py sync --futures  # 期货
 uv run python main.py sync --options  # 期权
@@ -49,6 +51,24 @@ uv run python main.py sync --table industry     # 申万行业分类 + 成分映
 uv run python main.py sync --table ci_member    # 中信行业成分映射
 uv run python main.py sync --table sw_daily     # 申万行业指数日线行情
 ```
+
+### 财务专题（可选，需积分 ≥ 2000）
+
+```bash
+uv run python main.py sync --finance
+uv run python main.py sync --table income
+uv run python main.py sync --table balancesheet
+uv run python main.py sync --table cashflow
+uv run python main.py sync --table dividend
+uv run python main.py sync --table forecast
+uv run python main.py sync --table express
+uv run python main.py sync --table fina_indicator
+uv run python main.py sync --table fina_audit
+uv run python main.py sync --table fina_mainbz
+uv run python main.py sync --table disclosure_date
+```
+
+依赖 `basic` 股票列表，不依赖交易日历。首次从 **20000101** 获取历史，后续手动同步刷新**上一年元旦至今**；`--all` 包含财务表，`--stock` 不包含。日期字段、刷新替换、断点续传和本地查询见[财务专题说明](finance.md)。
 
 ### ETF 专题（可选）
 

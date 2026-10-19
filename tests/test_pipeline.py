@@ -212,6 +212,7 @@ def test_pipeline_accepts_data_sources_container(cfg, fetcher, notifier):
 
 
 def test_pipeline_registry_contains_all_tables(pipeline):
+    from zer0share.finance.catalog import FINANCE_TABLES
     expected = {
         "trade_cal",
         "basic", "daily_kline", "adj_factor", "daily_basic", "stock_st",
@@ -224,8 +225,8 @@ def test_pipeline_registry_contains_all_tables(pipeline):
         "opt_basic", "opt_daily",
         "fund_daily", "fund_adj", "etf_share_size", "etf_sh_cons", "etf_basic", "etf_index",
     }
-    assert set(pipeline.registry.keys()) == expected
-    assert len(pipeline.registry) == 34
+    assert set(pipeline.registry.keys()) == expected | set(FINANCE_TABLES)
+    assert len(pipeline.registry) == 34 + len(FINANCE_TABLES)
 
 
 def test_opt_daily_spec_uses_option_market_first_date(pipeline):
@@ -237,12 +238,14 @@ def test_pipeline_run_unknown_table_raises(pipeline):
         pipeline.run("nonexistent")
 
 
-def test_run_all_runs_all_26_jobs(pipeline, cfg):
+def test_run_all_runs_all_26_jobs(pipeline, cfg, fetcher):
     """Smoke test: run_all() on a fully up-to-date pipeline raises no exception."""
     # Mark all tables as already synced to today so every job returns immediately
     today = "20240102"
     pipeline._runtime.calendar._today_fn = lambda: today
     _setup_trade_cal(pipeline, cfg, trade_date=today, is_open=True)
+    fetcher.fetch_basic.return_value = _basic_df()
+    fetcher.fetch_financial.return_value = pd.DataFrame()
 
     # Mark every registered table as already synced
     for table_name in pipeline.registry:

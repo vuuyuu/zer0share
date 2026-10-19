@@ -5,6 +5,8 @@ from zer0share.config import load_config
 from zer0share.query import QueryContext
 from zer0share.query import calendar, stock, index, industry, futures, options, etf
 from zer0share.query import news as news_query
+from zer0share.query.finance import query_financial
+from zer0share.finance.catalog import FINANCE_TABLES
 
 
 def _check_dates(kwargs: dict) -> None:
@@ -29,6 +31,36 @@ class LocalPro:
     # Equities
     def stock_basic(self, **kwargs):
         return stock.stock_basic(self._ctx, **kwargs)
+
+    def income(self, **kwargs):
+        return query_financial(self._ctx, "income", **kwargs)
+
+    def balancesheet(self, **kwargs):
+        return query_financial(self._ctx, "balancesheet", **kwargs)
+
+    def cashflow(self, **kwargs):
+        return query_financial(self._ctx, "cashflow", **kwargs)
+
+    def dividend(self, **kwargs):
+        return query_financial(self._ctx, "dividend", **kwargs)
+
+    def forecast(self, **kwargs):
+        return query_financial(self._ctx, "forecast", **kwargs)
+
+    def express(self, **kwargs):
+        return query_financial(self._ctx, "express", **kwargs)
+
+    def fina_indicator(self, **kwargs):
+        return query_financial(self._ctx, "fina_indicator", **kwargs)
+
+    def fina_audit(self, **kwargs):
+        return query_financial(self._ctx, "fina_audit", **kwargs)
+
+    def fina_mainbz(self, **kwargs):
+        return query_financial(self._ctx, "fina_mainbz", **kwargs)
+
+    def disclosure_date(self, **kwargs):
+        return query_financial(self._ctx, "disclosure_date", **kwargs)
 
     def daily(self, **kwargs):
         _check_dates(kwargs)
@@ -179,6 +211,8 @@ class LocalPro:
         return etf.etf_sh_cons(self._ctx, **kwargs)
 
     def query(self, api_name: str, **kwargs):
+        if api_name in FINANCE_TABLES:
+            return query_financial(self._ctx, api_name, **kwargs)
         dispatch = {
             "stock_basic": self.stock_basic,
             "trade_cal": self.trade_cal,

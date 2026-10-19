@@ -26,6 +26,7 @@ A 股、ETF、期货、期权数据本地化管道：基于 [Tushare Pro](https:
 
 - **A 股数据**：交易日历、基础信息、日线、复权因子、每日指标、ST、停复牌、涨跌停、股东增减持、指数成分、申万/中信行业、申万行业指数日线
 - **ETF 数据**：ETF 基础信息、日线行情、复权因子、份额规模、持仓组合
+- **财务数据**：三大报表、分红送股、预告、快报、指标、审计意见、主营构成与披露日期，支持 `sync --finance` 和单表同步，详见[财务专题](docs/finance.md)
 - **期货 & 期权数据**：期货合约、日线、持仓排名、仓单、结算、主连映射；期权合约与日线行情
 - **分钟线（可选）**：接入 RiceQuant 数据源同步股票 / ETF 分钟线
 - **新闻（可选）**：`major_news` 长篇通讯、`news` 快讯，存入 SQLite（去重、断点续跑、标题中文全文检索），可用单独的 Tushare 账号
@@ -94,6 +95,40 @@ print(pro.daily(ts_code='000001.SZ', start_date='20240101', end_date='20240131')
 
 同步顺序、逐表命令和定时调度部署见[同步指南](docs/SYNC_GUIDE.md)。
 
+## 财务专题
+
+支持以下 10 张 A 股财务表，使用普通逐股票接口，需要 Tushare 积分 ≥ 2000：
+
+| 表名 | 数据 |
+|------|------|
+| `income` | 利润表 |
+| `balancesheet` | 资产负债表 |
+| `cashflow` | 现金流量表 |
+| `dividend` | 分红送股 |
+| `forecast` | 业绩预告 |
+| `express` | 业绩快报 |
+| `fina_indicator` | 财务指标 |
+| `fina_audit` | 财务审计意见 |
+| `fina_mainbz` | 主营业务构成 |
+| `disclosure_date` | 财报披露日期 |
+
+```bash
+# 准备股票列表（包含退市股票；财务同步不依赖交易日历）
+uv run python main.py sync --table basic
+
+# 按专题同步全部财务表，也可按表单独同步
+uv run python main.py sync --finance
+uv run python main.py sync --table income
+uv run python main.py sync --table dividend
+
+# 手动重拉指定历史范围
+uv run python main.py sync --table income --start-date 20100101 --end-date 20151231
+```
+
+首次默认从 **20000101** 同步至今，后续手动执行同一命令，刷新**上一年 1 月 1 日至今**。刷新窗口内以完整源结果替换，反映新增、修改和删除，窗口外保留。支持按股票保存进度，中断后再次运行可继续；每次请求均限流，达到条数上限时拆分区间，无法确认完整性时保留旧数据并报错。
+
+数据写入 `data/finance/<表名>/ts_code=<股票代码>/data.parquet`，保留 Tushare 原始字段和口径，不进行 PIT 重建、历史版本归档或策略评分。`sync --all` 包含财务专题，`sync --stock` 保持原有范围；财务表没有默认定时任务。各表日期字段、接口限制和更多示例见[财务专题说明](docs/finance.md)。
+
 ## 本地查询 API
 
 同步完成后，用类似 Tushare Pro 的接口查询本地数据：
@@ -109,9 +144,11 @@ hs300 = pro.index_weight(index_code="399300.SZ", start_date="20240101", end_date
 pool = pro.universe("univ_trade_hs300", trade_date="20240131")
 fut_bar = pro.fut_daily(ts_code="RB2410.SHFE", start_date="20240101", end_date="20240331")
 opt_bar = pro.opt_daily(ts_code="10004462.SH", start_date="20240101", end_date="20240131")
+income = pro.income(ts_code="000001.SZ", period="20251231")
+dividend = pro.dividend(ts_code="000001.SZ", start_date="20250101", end_date="20261231")
 ```
 
-全部 30+ 个查询方法、完整示例和冒烟测试见[本地查询 API 文档](docs/query-api.md)。
+全部 40+ 个查询方法、完整示例和冒烟测试见[本地查询 API 文档](docs/query-api.md)。
 
 仓库还内置 AI Skill（`skills/zer0share-data`），支持让 Codex、Claude Code 等智能体把中文自然语言数据请求转成本地查询流程。
 
@@ -119,9 +156,10 @@ opt_bar = pro.opt_daily(ts_code="10004462.SH", start_date="20240101", end_date="
 
 | 命令 | 说明 |
 |------|------|
-| `sync --table <name>` | 增量同步单个表（全部 30+ 个表见[同步指南](docs/SYNC_GUIDE.md)） |
+| `sync --table <name>` | 同步单个表（全部 40+ 个表见[同步指南](docs/SYNC_GUIDE.md)） |
 | `sync --all` | 按顺序同步全部 |
 | `sync --stock` / `--etf` / `--futures` / `--options` | 按专题分组同步 |
+| `sync --finance` | 财务 10 表；首次从 20000101，后续刷新上一年元旦至今 |
 | `sync --ricequant` | 同步 RiceQuant 分钟线（可选，需 RiceQuant 账号） |
 | `news sync --api major_news\|news --start-date <YYYYMMDD> [--src ...]` | 同步新闻到 `data/news/news.db`（原始返回归档在 `data/news/raw/`），已完成的日期自动跳过 |
 | `build-universe [--date / --start-date / --end-date]` | 构建股票池（详见[股票池文档](docs/universe.md)） |
@@ -141,6 +179,7 @@ zer0share/
 │   ├── catalog.py    # 本地表结构、路径和查询规格
 │   ├── cli.py        # Click CLI 实现
 │   ├── fetcher.py    # Tushare API 封装
+│   ├── finance/      # 财务字段、下载适配和窗口替换存储
 │   ├── pipeline.py   # 同步任务编排
 │   ├── sync/         # 各专题同步任务
 │   ├── query/        # 本地查询实现
@@ -160,6 +199,7 @@ zer0share/
 
 - [同步指南](docs/SYNC_GUIDE.md)：积分要求、全部同步表、首次同步顺序和定时调度部署
 - [本地查询 API](docs/query-api.md)：全部查询方法、完整示例和冒烟测试
+- [财务专题](docs/finance.md)：10 张财务表、历史回填、年度窗口刷新和本地查询
 - [股票池构建](docs/universe.md)：6 个股票池的定义和过滤规则
 - [数据存储结构](docs/storage.md)：Parquet 分区布局和 DuckDB 元数据
 - [examples/README.md](examples/README.md)：示例脚本清单和默认参数

@@ -65,6 +65,40 @@ def test_sync_end_date_requires_start_date():
     assert "--end-date requires --start-date" in result.output
 
 
+def test_sync_finance_group():
+    from zer0share.finance.catalog import FINANCE_TABLES
+    pipeline = _make_mock_pipeline()
+    with patch("zer0share.cli._make_pipeline", return_value=pipeline):
+        result = CliRunner().invoke(cli, ["sync", "--finance"])
+    assert result.exit_code == 0, result.output
+    assert [c.args[0] for c in pipeline.run.call_args_list] == FINANCE_TABLES
+
+
+def test_sync_financial_table_date_range():
+    pipeline = _make_mock_pipeline()
+    with patch("zer0share.cli._make_pipeline", return_value=pipeline):
+        result = CliRunner().invoke(cli, ["sync", "--table", "dividend", "--start-date", "20000101", "--end-date", "20261231"])
+    assert result.exit_code == 0, result.output
+    pipeline.run.assert_called_once_with("dividend", start_date="20000101", end_date="20261231")
+
+
+def test_sync_finance_conflicting_selection_is_rejected():
+    result = CliRunner().invoke(cli, ["sync", "--finance", "--table", "income"])
+    assert result.exit_code != 0
+    assert "--finance 不能" in result.output
+
+
+def test_sync_finance_passes_explicit_range_to_every_table():
+    from zer0share.finance.catalog import FINANCE_TABLES
+    pipeline = _make_mock_pipeline()
+    with patch("zer0share.cli._make_pipeline", return_value=pipeline):
+        result = CliRunner().invoke(cli, ["sync", "--finance", "--start-date", "20000101", "--end-date", "20201231"])
+    assert result.exit_code == 0, result.output
+    assert len(pipeline.run.call_args_list) == 10
+    assert [c.args[0] for c in pipeline.run.call_args_list] == FINANCE_TABLES
+    assert all(c.kwargs == {"start_date": "20000101", "end_date": "20201231"} for c in pipeline.run.call_args_list)
+
+
 def test_build_universe_accepts_date_range(tmp_path):
     runner = CliRunner()
     cfg = MagicMock()

@@ -4,6 +4,7 @@ from pathlib import Path
 import click
 
 from zer0share.config import load_config
+from zer0share.finance.catalog import FINANCE_TABLES
 from zer0share.logging import init_logger
 from zer0share.news import NEWS_APIS, NEWS_DB, NEWS_RAW, NewsStore, NewsSyncer, RawArchive, TushareHttpClient
 from zer0share.notifier import build_notifier
@@ -114,6 +115,7 @@ SYNC_TABLES = [
     *OPTIONS_TABLES,
     *ETF_TABLES,
     *RICEQUANT_TABLES,
+    *FINANCE_TABLES,
 ]
 
 
@@ -125,6 +127,7 @@ SYNC_TABLES = [
 )
 @click.option("--all", "sync_all", is_flag=True, default=False)
 @click.option("--stock", "sync_stock", is_flag=True, default=False)
+@click.option("--finance", "sync_finance", is_flag=True, default=False)
 @click.option("--futures", "sync_futures", is_flag=True, default=False)
 @click.option("--options", "sync_options", is_flag=True, default=False)
 @click.option("--etf", "sync_etf", is_flag=True, default=False)
@@ -135,6 +138,7 @@ def sync(
     table: str | None,
     sync_all: bool,
     sync_stock: bool,
+    sync_finance: bool,
     sync_futures: bool,
     sync_options: bool,
     sync_etf: bool,
@@ -143,6 +147,8 @@ def sync(
     end_date: str | None,
 ) -> None:
     """同步数据。"""
+    if sync_finance and any((table, sync_all, sync_stock, sync_futures, sync_options, sync_etf, sync_ricequant)):
+        raise click.UsageError("--finance 不能与其他同步选择参数同时使用")
     if end_date is not None and start_date is None:
         raise click.UsageError("--end-date requires --start-date")
     if start_date is not None and end_date is not None and end_date < start_date:
@@ -156,6 +162,9 @@ def sync(
 
         if sync_all:
             pipeline.run_all(start_date=start_date, end_date=end_date)
+        elif sync_finance:
+            for t in FINANCE_TABLES:
+                pipeline.run(t, start_date=start_date, end_date=end_date)
         elif sync_stock:
             for t in STOCK_TABLES:
                 pipeline.run(t, start_date=start_date, end_date=end_date)
@@ -174,7 +183,7 @@ def sync(
         elif table is not None:
             pipeline.run(table, start_date=start_date, end_date=end_date)
         else:
-            raise click.UsageError("需要指定 --table、--stock、--futures、--options、--etf、--ricequant 或 --all")
+            raise click.UsageError("需要指定 --table、--stock、--finance、--futures、--options、--etf、--ricequant 或 --all")
 
 
 @cli.group()
