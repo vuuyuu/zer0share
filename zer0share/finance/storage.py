@@ -19,7 +19,9 @@ class FinanceStore:
         self.spec = spec
 
     def path(self, ts_code: str) -> Path:
-        if not re.fullmatch(r"\d{6}\.[A-Z]+", ts_code):
+        # stock_basic also includes historical codes such as T600018.SH.
+        # Preserve the source identifier rather than stripping its prefix.
+        if not re.fullmatch(r"T?\d{6}\.[A-Z]+", ts_code):
             raise ValueError(f"invalid stock code: {ts_code!r}")
         return self.table_dir / f"ts_code={ts_code}" / "data.parquet"
 

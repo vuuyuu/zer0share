@@ -293,3 +293,40 @@ def test_resume_covers_gap_after_multiple_years_without_sync(tmp_path, runtime):
     fetch.reset_mock()
     job.run(runtime)
     assert fetch.call_args_list[0] == call("income", "000001.SZ", "20240101", "20261019")
+
+
+@pytest.mark.parametrize("code", ["000001.SZ", "600018.SH", "920001.BJ", "T600018.SH"])
+def test_finance_partition_accepts_source_stock_codes(tmp_path, code):
+    store = FinanceStore(tmp_path, FINANCE_SPECS["dividend"])
+    assert store.path(code) == tmp_path / "finance" / "dividend" / f"ts_code={code}" / "data.parquet"
+
+
+@pytest.mark.parametrize("code", ["../600018.SH", "T600018/SH", "T600018.SH/../", "T600018.SH\n", "TT600018.SH"])
+def test_finance_partition_still_rejects_invalid_paths(tmp_path, code):
+    with pytest.raises(ValueError, match="invalid stock code"):
+        FinanceStore(tmp_path, FINANCE_SPECS["dividend"]).path(code)
+
+
+def test_historical_prefixed_code_download_storage_query_and_refresh(tmp_path, runtime):
+    SnapshotStore(tmp_path / "stock" / "basic" / "data.parquet").write(pd.DataFrame({
+        "ts_code": ["600018.SH", "T600018.SH"], "list_status": ["L", "D"],
+    }))
+    pro = MagicMock()
+    pro.dividend.side_effect = lambda **kw: pd.DataFrame([
+        row("dividend", "20251231", code=kw["ts_code"], cash_div=0.1 if kw["ts_code"].startswith("T") else 0.2)
+    ])
+    job = FinanceSyncJob(
+        FINANCE_SPECS["dividend"],
+        lambda table, code, start, end: fetch_financial(pro, table, code, start, end),
+        tmp_path,
+    )
+    job.run(runtime)
+    assert [c.kwargs["ts_code"] for c in pro.dividend.call_args_list] == ["600018.SH", "T600018.SH"]
+    assert runtime.meta.get_last_date("finance:dividend:T600018.SH") == "20261019"
+    local = LocalPro(tmp_path)
+    historical = local.dividend(ts_code="T600018.SH", period="20251231")
+    assert historical.iloc[0].ts_code == "T600018.SH"
+    assert historical.iloc[0].cash_div == 0.1
+    assert local.dividend(ts_code="600018.SH").iloc[0].cash_div == 0.2
+    job.run(runtime)
+    assert len(local.dividend(ts_code="T600018.SH")) == 1
