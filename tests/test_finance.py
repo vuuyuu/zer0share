@@ -150,20 +150,23 @@ def runtime(tmp_path):
 
 
 @pytest.mark.parametrize("table", list(FINANCE_SPECS))
-def test_first_sync_then_previous_calendar_year_refresh(tmp_path, runtime, table):
+def test_first_full_sync_then_only_dates_after_last_success(tmp_path, runtime, table):
     fetch = MagicMock(return_value=pd.DataFrame())
     job = FinanceSyncJob(FINANCE_SPECS[table], fetch, tmp_path)
     job.run(runtime)
     assert fetch.call_args_list == [call(table, code, "20000101", "20261019") for code in ("000001.SZ", "000002.SZ")]
     fetch.reset_mock()
     job.run(runtime)
-    assert fetch.call_args_list == [call(table, code, "20250101", "20261019") for code in ("000001.SZ", "000002.SZ")]
+    fetch.assert_not_called()
     assert runtime.meta.get_last_date(table) == "20261019"
-    # A new calendar year rolls the window, including when no new trading day exists.
+    runtime.calendar._today_fn = lambda: "20261020"
+    job.run(runtime)
+    assert fetch.call_args_list == [call(table, code, "20261020", "20261020") for code in ("000001.SZ", "000002.SZ")]
+    # Gaps and year boundaries do not reset the cursor to a calendar-year window.
     runtime.calendar._today_fn = lambda: "20270101"
     fetch.reset_mock()
     job.run(runtime)
-    assert fetch.call_args_list == [call(table, code, "20260101", "20270101") for code in ("000001.SZ", "000002.SZ")]
+    assert fetch.call_args_list == [call(table, code, "20261021", "20270101") for code in ("000001.SZ", "000002.SZ")]
 
 
 def test_partial_first_sync_resumes_without_losing_uninitialized_stock_history(tmp_path, runtime):
@@ -179,9 +182,57 @@ def test_partial_first_sync_resumes_without_losing_uninitialized_stock_history(t
     fetch.reset_mock()
     job.run(runtime)
     assert fetch.call_args_list == [
-        call("income", "000001.SZ", "20250101", "20261019"),
         call("income", "000002.SZ", "20000101", "20261019"),
     ]
+
+
+def test_incremental_sync_preserves_existing_history(tmp_path, runtime):
+    def fetch(table, code, start, end):
+        return pd.DataFrame([row(code=code, date=end, revenue=1 if start == "20000101" else 2)])
+    job = FinanceSyncJob(FINANCE_SPECS["income"], fetch, tmp_path)
+    job.run(runtime)
+    runtime.calendar._today_fn = lambda: "20261020"
+    job.run(runtime)
+    data = job._store.read("000001.SZ")
+    assert list(data.ann_date) == ["20261019", "20261020"]
+    assert list(data.revenue) == [1, 2]
+    assert runtime.meta.get_last_date("finance:income:000001.SZ") == "20261020"
+
+
+def test_new_stock_still_receives_full_history_after_other_stocks_are_current(tmp_path, runtime):
+    fetch = MagicMock(return_value=pd.DataFrame())
+    job = FinanceSyncJob(FINANCE_SPECS["income"], fetch, tmp_path)
+    job.run(runtime)
+    SnapshotStore(tmp_path / "stock/basic/data.parquet").write(
+        pd.DataFrame({"ts_code": ["000001.SZ", "000002.SZ", "000003.SZ"]})
+    )
+    fetch.reset_mock()
+    job.run(runtime)
+    fetch.assert_called_once_with("income", "000003.SZ", "20000101", "20261019")
+
+
+def test_incremental_uses_each_stock_cursor_instead_of_table_summary(tmp_path, runtime):
+    fetch = MagicMock(return_value=pd.DataFrame())
+    job = FinanceSyncJob(FINANCE_SPECS["income"], fetch, tmp_path)
+    job.run(runtime)
+    runtime.meta.update_last_date("finance:income:000002.SZ", "20261017")
+    fetch.reset_mock()
+    job.run(runtime)
+    fetch.assert_called_once_with("income", "000002.SZ", "20261018", "20261019")
+
+
+def test_manual_history_refresh_does_not_rewind_incremental_cursor(tmp_path, runtime):
+    fetch = MagicMock(return_value=pd.DataFrame())
+    job = FinanceSyncJob(FINANCE_SPECS["income"], fetch, tmp_path)
+    job.run(runtime)
+    fetch.reset_mock()
+    job.run(runtime, start_date="20250101", end_date="20251231")
+    assert fetch.call_args_list == [call("income", code, "20250101", "20251231") for code in ("000001.SZ", "000002.SZ")]
+    assert runtime.meta.get_last_date("finance:income:000001.SZ") == "20261019"
+    fetch.reset_mock()
+    runtime.calendar._today_fn = lambda: "20261020"
+    job.run(runtime)
+    assert fetch.call_args_list == [call("income", code, "20261020", "20261020") for code in ("000001.SZ", "000002.SZ")]
 
 
 def test_narrow_manual_sync_does_not_mark_initial_history_complete(tmp_path, runtime):

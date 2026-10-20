@@ -68,7 +68,7 @@ uv run python main.py sync --table fina_mainbz
 uv run python main.py sync --table disclosure_date
 ```
 
-依赖 `basic` 股票列表，不依赖交易日历。首次从 **20000101** 获取历史，后续手动同步刷新**上一年元旦至今**；`--all` 包含财务表，`--stock` 不包含。日期字段、刷新替换、断点续传和本地查询见[财务专题说明](finance.md)。
+依赖 `basic` 股票列表，不依赖交易日历。首次从 **20000101** 获取历史，后续仅同步**各股票上次成功同步日期的下一天至今**，当天已完成则跳过；`--all` 包含财务表，`--stock` 不包含。日期字段、手动重拉、断点续传和本地查询见[财务专题说明](finance.md)。
 
 ### ETF 专题（可选）
 

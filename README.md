@@ -125,7 +125,7 @@ uv run python main.py sync --table dividend
 uv run python main.py sync --table income --start-date 20100101 --end-date 20151231
 ```
 
-首次默认从 **20000101** 同步至今，后续手动执行同一命令，刷新**上一年 1 月 1 日至今**。刷新窗口内以完整源结果替换，反映新增、修改和删除，窗口外保留。支持按股票保存进度，中断后再次运行可继续；每次请求均限流，达到条数上限时拆分区间，无法确认完整性时保留旧数据并报错。
+首次默认从 **20000101** 同步至今，后续执行同一命令，仅同步**各股票上次成功同步日期的下一天至今**；当天已完成则跳过，不再回看上一年或重新刷新旧数据。新股票、未完成首次同步或丢失本地文件的股票仍补全历史，旧日期的数据修订可通过指定范围手动重拉。支持按股票保存进度，中断后再次运行可继续；每次请求均限流，达到条数上限时拆分区间，无法确认完整性时保留旧数据并报错。
 
 数据写入 `data/finance/<表名>/ts_code=<股票代码>/data.parquet`，保留 Tushare 原始字段和口径，不进行 PIT 重建、历史版本归档或策略评分。`sync --all` 包含财务专题，`sync --stock` 保持原有范围。示例配置已安排财务 10 表从 21:00 开始、每隔 3 分钟触发，运行 `scheduler start` 后生效；触发时间不代表上一任务已完成。各表日期字段、接口限制和更多示例见[财务专题说明](docs/finance.md)。
 
@@ -159,7 +159,7 @@ dividend = pro.dividend(ts_code="000001.SZ", start_date="20250101", end_date="20
 | `sync --table <name>` | 同步单个表（全部 40+ 个表见[同步指南](docs/SYNC_GUIDE.md)） |
 | `sync --all` | 按顺序同步全部 |
 | `sync --stock` / `--etf` / `--futures` / `--options` | 按专题分组同步 |
-| `sync --finance` | 财务 10 表；首次从 20000101，后续刷新上一年元旦至今 |
+| `sync --finance` | 财务 10 表；首次从 20000101，后续从各股票上次成功同步日期的下一天增量同步 |
 | `sync --ricequant` | 同步 RiceQuant 分钟线（可选，需 RiceQuant 账号） |
 | `news sync --api major_news\|news --start-date <YYYYMMDD> [--src ...]` | 同步新闻到 `data/news/news.db`（原始返回归档在 `data/news/raw/`），已完成的日期自动跳过 |
 | `build-universe [--date / --start-date / --end-date]` | 构建股票池（详见[股票池文档](docs/universe.md)） |
@@ -199,7 +199,7 @@ zer0share/
 
 - [同步指南](docs/SYNC_GUIDE.md)：积分要求、全部同步表、首次同步顺序和定时调度部署
 - [本地查询 API](docs/query-api.md)：全部查询方法、完整示例和冒烟测试
-- [财务专题](docs/finance.md)：10 张财务表、历史回填、年度窗口刷新和本地查询
+- [财务专题](docs/finance.md)：10 张财务表、历史回填、按同步进度增量更新和本地查询
 - [macOS 本机定时同步](docs/macos-scheduling.md)：交易日 17:00 股票、21:00 财务，支持互斥等待和日志
 - [股票池构建](docs/universe.md)：6 个股票池的定义和过滤规则
 - [数据存储结构](docs/storage.md)：Parquet 分区布局和 DuckDB 元数据

@@ -42,8 +42,7 @@ class FinanceSyncJob(SyncJob):
         for code in codes:
             self._store.path(code)  # Validate stock codes before making requests.
 
-        refresh_start = f"{int(today[:4]) - 1}0101"
-        # Precompute each stock's refresh window in the main thread: DuckDB
+        # Precompute each stock's incremental window in the main thread: DuckDB
         # (MetaStore) is not thread-safe, so meta reads stay out of the workers.
         # A newly added stock or a lost partition needs full history.
         tasks = []
@@ -53,7 +52,7 @@ class FinanceSyncJob(SyncJob):
             if not self._store.path(code).exists():
                 last = None
             start = start_date or (
-                min(refresh_start, dateutil.add_days(last, 1)) if last else self.spec.first_date
+                dateutil.add_days(last, 1) if last else self.spec.first_date
             )
             if start > end:
                 continue
@@ -65,6 +64,8 @@ class FinanceSyncJob(SyncJob):
             f"{self.table_name}: start stocks={len(codes)}, to_fetch={len(tasks)}, "
             f"date_column={self.spec.date_column}"
         )
+        if not tasks:
+            logger.info(f"{self.table_name}: 已是最新，无需拉取新数据 (end={end})")
         try:
             with ThreadPoolExecutor(max_workers=self._max_workers) as pool:
                 futures = [
