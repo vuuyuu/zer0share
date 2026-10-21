@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-JOBS = {"stock": ("com.zer0share.sync-stock", 17), "finance": ("com.zer0share.sync-finance", 21)}
+JOBS = {"stock": ("com.zer0share.sync-stock", 17), "finance": ("com.zer0share.sync-finance", 2)}
 
 
 def agent_config(group: str, root: Path, uv: Path) -> dict:

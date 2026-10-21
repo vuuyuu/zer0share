@@ -200,7 +200,7 @@ zer0share/
 - [同步指南](docs/SYNC_GUIDE.md)：积分要求、全部同步表、首次同步顺序和定时调度部署
 - [本地查询 API](docs/query-api.md)：全部查询方法、完整示例和冒烟测试
 - [财务专题](docs/finance.md)：10 张财务表、历史回填、按同步进度增量更新和本地查询
-- [macOS 本机定时同步](docs/macos-scheduling.md)：交易日 17:00 股票、21:00 财务，支持互斥等待和日志
+- [macOS 本机定时同步](docs/macos-scheduling.md)：交易日 17:00 股票、次日 02:00 财务（判断前一天交易日），支持互斥等待和日志
 - [股票池构建](docs/universe.md)：6 个股票池的定义和过滤规则
 - [数据存储结构](docs/storage.md)：Parquet 分区布局和 DuckDB 元数据
 - [examples/README.md](examples/README.md)：示例脚本清单和默认参数

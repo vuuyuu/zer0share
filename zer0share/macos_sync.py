@@ -1,12 +1,12 @@
 """Trading-day gate and process mutex for the two macOS LaunchAgents.
 
-No changes to the existing CLI or APScheduler. The actual sync is still run as
-``uv run python main.py sync --stock/--finance`` from the project directory.
+The actual sync runs through the CLI from the project directory. Overnight
+finance runs check the previous calendar day and cap data coverage at that day.
 """
 
 import argparse
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 import fcntl
 import logging
 import os
@@ -134,24 +134,33 @@ def main(argv=None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
     try:
         day = today()
+        # Keep execution day for wait expiry; only finance's calendar check and
+        # data watermark refer to yesterday. Never backdate actual timestamps.
+        reference_day = (
+            (datetime.strptime(day, "%Y%m%d") - timedelta(days=1)).strftime("%Y%m%d")
+            if args.group == "finance" else day
+        )
         data_dir, db_path = configured_paths(ROOT)
-        if not is_trading_day(data_dir, day):
-            LOGGER.info("%s 非交易日，跳过 %s 同步", day, args.group)
+        if not is_trading_day(data_dir, reference_day):
+            LOGGER.info("执行日期=%s，判断日期=%s 非交易日，跳过 %s 同步", day, reference_day, args.group)
             return 0
         if not args.uv or not Path(args.uv).is_absolute() or not os.access(args.uv, os.X_OK):
             raise RuntimeError("uv 绝对路径不可执行，请重新安装 LaunchAgents")
         command = [args.uv, "run", "python", "main.py", "sync", f"--{args.group}"]
+        if args.group == "finance":
+            command.extend(["--end-date", reference_day])
         if args.check_only:
-            LOGGER.info("检查通过：%s 为交易日；目录=%s；命令=%s", day, ROOT, command)
+            LOGGER.info("检查通过：执行日期=%s；判断日期=%s 为交易日；目录=%s；命令=%s",
+                        day, reference_day, ROOT, command)
             return 0
         deadline = time.monotonic() + WAIT_SECONDS
         lock_path = ROOT / "logs" / "launchd" / "sync.lock"
         with sync_lock(lock_path, day, deadline):
             wait_for_database(db_path, day, deadline)
-            if not is_trading_day(data_dir, day):
+            if not is_trading_day(data_dir, reference_day):
                 LOGGER.info("等待后日历显示非交易日，跳过 %s", args.group)
                 return 0
-            LOGGER.info("%s 交易日，开始 %s 同步", day, args.group)
+            LOGGER.info("执行日期=%s，交易日=%s，开始 %s 同步", day, reference_day, args.group)
             code = run_command(command, ROOT)
             LOGGER.log(logging.INFO if code == 0 else logging.ERROR,
                        "%s 同步结束，退出码=%s", args.group, code)

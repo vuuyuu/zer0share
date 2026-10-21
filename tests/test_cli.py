@@ -751,3 +751,16 @@ def test_sync_stock_includes_stk_holdertrade():
     assert result.exit_code == 0
     called_tables = [args.args[0] for args in pipeline.run.call_args_list]
     assert "stk_holdertrade" in called_tables
+
+
+def test_finance_end_date_preserves_automatic_incremental_start():
+    from zer0share.finance.catalog import FINANCE_TABLES
+    for selection in (["--finance"], ["--table", "dividend"]):
+        pipeline = _make_mock_pipeline()
+        with patch("zer0share.cli._make_pipeline", return_value=pipeline):
+            result = CliRunner().invoke(cli, ["sync", *selection, "--end-date", "20261020"])
+        assert result.exit_code == 0, result.output
+        expected = FINANCE_TABLES if selection == ["--finance"] else ["dividend"]
+        assert [c.args[0] for c in pipeline.run.call_args_list] == expected
+        assert all(c.kwargs == {"start_date": None, "end_date": "20261020"}
+                   for c in pipeline.run.call_args_list)

@@ -454,3 +454,27 @@ def test_concurrent_failure_keeps_earlier_stock_data(tmp_path, runtime):
     assert job._store.read("000001.SZ").iloc[0].revenue == 1
     assert runtime.meta.get_last_date("finance:income:000001.SZ") == "20261019"
     assert runtime.meta.get_last_date("finance:income:000002.SZ") is None
+
+
+@pytest.mark.parametrize("table", list(FINANCE_SPECS))
+def test_overnight_cutoff_records_coverage_separately_from_actual_write_time(tmp_path, runtime, table):
+    from datetime import datetime, timezone
+
+    runtime.calendar._today_fn = lambda: "20261020"
+    fetch = MagicMock(return_value=pd.DataFrame())
+    job = FinanceSyncJob(FINANCE_SPECS[table], fetch, tmp_path)
+    before = datetime.now(timezone.utc)
+    job.run(runtime, end_date="20261019")
+    for key in (table, "finance:" + table + ":000001.SZ", "finance:" + table + ":000002.SZ"):
+        assert runtime.meta.get_last_date(key) == "20261019"
+        updated = runtime.meta._conn.execute(
+            "SELECT epoch(updated_at AT TIME ZONE current_setting('TimeZone')) "
+            "FROM sync_meta WHERE table_name = ?", [key]
+        ).fetchone()[0]
+        assert before.timestamp() <= updated <= datetime.now(timezone.utc).timestamp()
+    fetch.reset_mock()
+    runtime.calendar._today_fn = lambda: "20261021"
+    job.run(runtime, end_date="20261020")
+    assert fetch.call_args_list == [call(table, code, "20261020", "20261020")
+                                   for code in ("000001.SZ", "000002.SZ")]
+    assert runtime.meta.get_last_date(table) == "20261020"

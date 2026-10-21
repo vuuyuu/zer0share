@@ -14,7 +14,7 @@ from scripts.install_macos_sync import agent_config
 from zer0share import macos_sync as task
 
 
-def calendar(root, dates=("20261020", "20261018"), flags=(True, False)):
+def calendar(root, dates=("20261020", "20261019", "20261018"), flags=(True, True, False)):
     path = root / "data" / "stock" / "trade_cal" / "exchange=SSE" / "data.parquet"
     path.parent.mkdir(parents=True, exist_ok=True)
     pq.write_table(pa.table({"cal_date": dates, "is_open": flags}), path)
@@ -73,7 +73,10 @@ def test_trading_day_runs_exact_cli_from_project_and_propagates_exit_code(root, 
     run = MagicMock(return_value=7)
     monkeypatch.setattr(task, "run_command", run)
     assert task.main([group, "--uv", sys.executable]) == 7
-    run.assert_called_once_with([sys.executable, "run", "python", "main.py", "sync", f"--{group}"], root)
+    command = [sys.executable, "run", "python", "main.py", "sync", f"--{group}"]
+    if group == "finance":
+        command += ["--end-date", "20261019"]
+    run.assert_called_once_with(command, root)
 
 
 def test_missing_calendar_aborts_without_running_sync(root, monkeypatch):
@@ -148,7 +151,7 @@ def test_waits_for_database_owned_by_a_manual_sync_process(root, monkeypatch):
             child.communicate()
 
 
-@pytest.mark.parametrize("group,hour", [("stock", 17), ("finance", 21)])
+@pytest.mark.parametrize("group,hour", [("stock", 17), ("finance", 2)])
 def test_launch_agent_schedule_absolute_paths_and_no_immediate_execution(group, hour):
     root = Path("/Users/example/Quant Lab")
     config = plistlib.loads(plistlib.dumps(agent_config(group, root, Path("/Users/example/.local/bin/uv"))))
@@ -159,3 +162,30 @@ def test_launch_agent_schedule_absolute_paths_and_no_immediate_execution(group, 
     assert config["RunAtLoad"] is False
     assert config["KeepAlive"] is False
     assert config["EnvironmentVariables"]["TZ"] == "Asia/Shanghai"
+
+
+@pytest.mark.parametrize("execution_day,reference_day,is_open", [
+    ("20261017", "20261016", True),  # Saturday runs Friday's sync.
+    ("20261019", "20261018", False),  # Monday skips Sunday.
+    ("20270101", "20261231", True),
+    ("20240301", "20240229", True),
+])
+def test_finance_uses_previous_calendar_day_and_execution_day_for_waits(
+    root, monkeypatch, execution_day, reference_day, is_open, caplog
+):
+    calendar(root, (reference_day,), (is_open,))
+    monkeypatch.setattr(task, "today", lambda: execution_day)
+    run = MagicMock(return_value=0)
+    wait = MagicMock()
+    monkeypatch.setattr(task, "run_command", run)
+    monkeypatch.setattr(task, "wait_for_database", wait)
+    with caplog.at_level("INFO"):
+        assert task.main(["finance", "--uv", sys.executable]) == 0
+    assert execution_day in caplog.text
+    assert reference_day in caplog.text
+    if is_open:
+        assert run.call_args.args[0][-2:] == ["--end-date", reference_day]
+        assert wait.call_args.args[1] == execution_day
+    else:
+        run.assert_not_called()
+        wait.assert_not_called()

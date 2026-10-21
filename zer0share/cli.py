@@ -149,7 +149,7 @@ def sync(
     """同步数据。"""
     if sync_finance and any((table, sync_all, sync_stock, sync_futures, sync_options, sync_etf, sync_ricequant)):
         raise click.UsageError("--finance 不能与其他同步选择参数同时使用")
-    if end_date is not None and start_date is None:
+    if end_date is not None and start_date is None and not (sync_finance or table in FINANCE_TABLES):
         raise click.UsageError("--end-date requires --start-date")
     if start_date is not None and end_date is not None and end_date < start_date:
         raise click.UsageError("--end-date must be on or after --start-date")
